@@ -83,7 +83,7 @@ function generarTablero() {
     return keyboard;
 }
 
-// 🔄 ACTUALIZAR TABLERO (BOTONES)
+// 🔄 SOLO ACTUALIZA BOTONES
 function actualizarTablero() {
 
     if (!tableroChatId || !tableroMessageId) return;
@@ -97,16 +97,20 @@ function actualizarTablero() {
     ).catch(() => {});
 }
 
-// 📢 REENVIAR TABLERO (VISUAL CASINO)
+// 📢 RE-POST SEGURO (FIX REAL)
 function reenviarTablero() {
 
     if (!tableroChatId) return;
 
     bot.sendMessage(tableroChatId,
-`🎰 TABLERO ACTUALIZADO EN VIVO`, {
+`🎰 TABLERO ACTUALIZADO
+
+💰 Total: $${totalDinero}`, {
         reply_markup: {
             inline_keyboard: generarTablero()
         }
+    }).then(msg => {
+        tableroMessageId = msg.message_id;
     });
 }
 
@@ -130,7 +134,7 @@ bot.onText(/\/bingo/, async (msg) => {
     tableroMessageId = sent.message_id;
 });
 
-// ⏱️ TIMER 5 MIN
+// ⏱️ TIMER
 function iniciarTimer(num) {
 
     startTimes[num] = Date.now();
@@ -152,13 +156,13 @@ function iniciarTimer(num) {
 👤 ${user}
 🔢 ${num}
 
-🟢 Disponible nuevamente`);
+🟢 LIBERADO`);
         }
 
     }, 300000);
 }
 
-// 🎯 CALLBACK PRINCIPAL
+// 🎯 CALLBACK
 bot.on('callback_query', async (query) => {
 
     const data = query.data;
@@ -191,16 +195,16 @@ bot.on('callback_query', async (query) => {
 👤 ${user}
 🔢 ${num}
 
-💰 DEBES PAGAR A NEQUI
-📸 ENVÍA CAPTURA AL GRUPO
+💰 PAGA A NEQUI
+📸 ENVÍA CAPTURA
 
-⏱️ 5 MIN PARA PAGAR`);
+⏱️ 5 MINUTOS`);
 
         bot.answerCallbackQuery(query.id);
         return;
     }
 
-    // 🔒 ADMIN ONLY
+    // 🔒 ADMIN
     if (query.from.id !== ADMIN_ID) return;
 
     const num = parseInt(data.split("_")[1]);
@@ -212,7 +216,6 @@ bot.on('callback_query', async (query) => {
     if (data.startsWith("no_")) {
 
         delete numeros[num];
-
         actualizarTablero();
 
         bot.sendMessage(tableroChatId,
@@ -221,12 +224,14 @@ bot.on('callback_query', async (query) => {
 👤 ${name}
 🔢 ${num}`);
 
-        reenviarTablero();
+        setTimeout(() => {
+            reenviarTablero();
+        }, 800);
 
         return;
     }
 
-    // ✅ APROBAR (MEJORADO)
+    // ✅ APROBAR
     if (data.startsWith("ok_")) {
 
         numeros[num].estado = "pagado";
@@ -234,12 +239,8 @@ bot.on('callback_query', async (query) => {
 
         actualizarTablero();
 
-        // 🎰 efecto casino
         bot.sendMessage(tableroChatId,
-`⏳ VERIFICANDO PAGO...
-
-🎰 ${name}
-🔢 ${num}`);
+`⏳ VERIFICANDO PAGO...`);
 
         setTimeout(() => {
 
@@ -252,11 +253,11 @@ bot.on('callback_query', async (query) => {
 
             reenviarTablero();
 
-        }, 2000);
+        }, 1500);
     }
 });
 
-// 📸 FOTO + REVISIÓN
+// 📸 FOTO
 bot.on('photo', (msg) => {
 
     const userId = msg.from.id;
