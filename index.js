@@ -47,10 +47,10 @@ function generarTablero() {
                 let tiempo = "";
 
                 if (startTimes[i]) {
-                    let restante = 300000 - (Date.now() - startTimes[i]);
+                    let restante = 100000 - (Date.now() - startTimes[i]);
                     tiempo = ` ${formatTiempo(restante)}`;
 
-                    if (restante <= 30000 && !alertados[i]) {
+                    if (restante <= 100000 && !alertados[i]) {
                         alertados[i] = true;
 
                         bot.sendMessage(tableroChatId,
@@ -159,7 +159,7 @@ function iniciarTimer(num) {
 🟢 LIBERADO`);
         }
 
-    }, 300000);
+    }, 100000);
 }
 
 // 🎯 CALLBACK
@@ -198,7 +198,7 @@ bot.on('callback_query', async (query) => {
 💰 PAGA A NEQUI
 📸 ENVÍA CAPTURA
 
-⏱️ 5 MINUTOS`);
+⏱️ 10MINUTOS`);
 
         bot.answerCallbackQuery(query.id);
         return;
