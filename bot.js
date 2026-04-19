@@ -15,7 +15,7 @@ function getUser(user) {
     return user.username ? `@${user.username}` : user.first_name;
 }
 
-// 🟢 TABLERO 1–15
+// 🎰 TABLERO CASINO
 function generarTablero() {
     let keyboard = [];
 
@@ -33,12 +33,12 @@ function generarTablero() {
                 texto = `${i} ⛔️ ${u} reservado`;
             }
 
-            if (item.estado === "pagado") {
-                texto = `${i} ✅ ${u} pagado`;
-            }
-
             if (item.estado === "pendiente") {
                 texto = `${i} ⏳ ${u} pendiente`;
+            }
+
+            if (item.estado === "pagado") {
+                texto = `${i} ✅ ${u} pagado`;
             }
         }
 
@@ -65,7 +65,7 @@ function actualizarTablero() {
     ).catch(() => {});
 }
 
-// ⏳ BLOQUEO AUTOMÁTICO
+// ⏳ BLOQUEO AUTOMÁTICO (5 MIN)
 function bloqueoAutomatico(num, tiempo = 300000) {
 
     setTimeout(() => {
@@ -79,22 +79,26 @@ function bloqueoAutomatico(num, tiempo = 300000) {
             actualizarTablero();
 
             bot.sendMessage(tableroChatId,
-`⛔️ Número liberado por falta de pago
+`⛔️ NÚMERO LIBERADO
 
-🔢 Número: ${num}
-👤 ${user}`
+🔢 ${num}
+👤 ${user}
+⌛ sin pago`
             );
         }
 
     }, tiempo);
 }
 
-// 🎱 CREAR TABLERO
+// 🎰 CREAR TABLERO
 bot.onText(/\/bingo/, async (msg) => {
 
     tableroChatId = msg.chat.id;
 
-    const sent = await bot.sendMessage(msg.chat.id, "🎱 TABLERO BINGO:", {
+    const sent = await bot.sendMessage(msg.chat.id,
+`🎰 CASINO BINGO EN VIVO
+
+Selecciona un número 👇`, {
         reply_markup: {
             inline_keyboard: generarTablero()
         }
@@ -129,19 +133,19 @@ bot.on('callback_query', (query) => {
     });
 
     bot.sendMessage(tableroChatId,
-`🎱 ${user} reservó el número ${num}
+`🎰 RESERVA
 
-💰 Envía tu pago con comprobante`
+👤 ${user}
+🔢 Número: ${num}`
     );
 });
 
-// 📸 FOTO → ADMIN
+// 📸 FOTO → PAGO AL GRUPO → BOTÓN EN MISMO GRUPO
 bot.on('photo', (msg) => {
 
     if (msg.chat.type === "private") return;
 
     const user = getUser(msg.from);
-
     const fileId = msg.photo[msg.photo.length - 1].file_id;
 
     let numero = null;
@@ -162,16 +166,21 @@ bot.on('photo', (msg) => {
 
     actualizarTablero();
 
-    bot.sendMessage(msg.chat.id,
-`💰 Pago recibido
+    // 💬 aviso grupo
+    bot.sendMessage(tableroChatId,
+`💰 PAGO RECIBIDO
+
 👤 ${user}
-🎱 Número: ${numero}
-⏳ En espera de confirmación`
+🔢 Número: ${numero}
+⏳ En revisión`
     );
 
-    // 📥 ENVIAR AL ADMIN CON BOTONES (RESTAURADO)
-    bot.sendPhoto(ADMIN_ID, fileId, {
-        caption: `📥 PAGO PENDIENTE\n👤 ${user}\n🎱 Número: ${numero}`,
+    // 📥 BOTONES EN EL MISMO GRUPO
+    bot.sendPhoto(tableroChatId, fileId, {
+        caption: `📥 PAGO PENDIENTE
+
+👤 ${user}
+🔢 Número: ${numero}`,
         reply_markup: {
             inline_keyboard: [
                 [
