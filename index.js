@@ -47,10 +47,10 @@ function generarTablero() {
                 let tiempo = "";
 
                 if (startTimes[i]) {
-                    let restante = 100000 - (Date.now() - startTimes[i]);
+                    let restante = 600000 - (Date.now() - startTimes[i]);
                     tiempo = ` ${formatTiempo(restante)}`;
 
-                    if (restante <= 100000 && !alertados[i]) {
+                    if (restante <= 600000 && !alertados[i]) {
                         alertados[i] = true;
 
                         bot.sendMessage(tableroChatId,
@@ -159,7 +159,7 @@ function iniciarTimer(num) {
 🟢 LIBERADO`);
         }
 
-    }, 100000);
+    }, 600000);
 }
 
 // 🎯 CALLBACK
