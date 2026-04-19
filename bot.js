@@ -27,7 +27,6 @@ function generarTablero() {
         let texto = `🟢 ${i} - DISPONIBLE`;
 
         if (item) {
-
             const u = item.user;
 
             if (item.estado === "reservado") {
@@ -52,7 +51,7 @@ function generarTablero() {
     return keyboard;
 }
 
-// 🔄 ACTUALIZAR TABLERO + DINERO
+// 🔄 ACTUALIZAR TABLERO
 function actualizarTablero() {
 
     if (!tableroChatId || !tableroMessageId) return;
@@ -64,13 +63,16 @@ function actualizarTablero() {
             message_id: tableroMessageId
         }
     ).catch(() => {});
-
-    // 💰 mensaje fijo de dinero
-    bot.sendMessage(tableroChatId,
-`💰 TOTAL RECAUDADO: $${totalDinero.toLocaleString()}`, {
-        disable_notification: true
-    });
 }
+
+// 🔁 AUTO REFRESH
+setInterval(() => {
+
+    if (!tableroChatId || !tableroMessageId) return;
+
+    actualizarTablero();
+
+}, 10000);
 
 // 🎰 CREAR TABLERO
 bot.onText(/\/bingo/, async (msg) => {
@@ -101,28 +103,23 @@ bot.on('callback_query', (query) => {
     }
 
     numeros[num] = {
-        user: user,
+        user,
         estado: "reservado"
     };
 
     actualizarTablero();
 
-    bot.answerCallbackQuery(query.id, {
-        text: `✔ ${num} tomado`
-    });
-
-    // 🔔 EFECTO CASINO VISUAL
     bot.sendMessage(tableroChatId,
-`🎰🎰🎰 NÚMERO EN JUEGO 🎰🎰🎰
+`🎯 NÚMERO RESERVADO
 
 👤 ${user}
 🔢 ${num}
 
 💰 Paga $3.000 NEQUI
-📸 Envía captura`);
+📸 Envía captura en el grupo`);
 });
 
-// 🔥 ADMIN ACCIONES
+// 🔥 ADMIN
 bot.on('callback_query', async (query) => {
 
     const data = query.data;
@@ -151,23 +148,25 @@ bot.on('callback_query', async (query) => {
 👤 ${user}`);
 
         actualizarTablero();
-
-        bot.answerCallbackQuery(query.id, { text: "Rechazado" });
         return;
     }
 
-    // ✅ APROBAR + RUEDA + DINERO
+    // ✅ APROBAR + SLOT MACHINE
     if (data.startsWith("ok_")) {
 
-        let anim = await bot.sendMessage(tableroChatId,
+        const anim = await bot.sendMessage(tableroChatId,
 `🎰 GIRANDO RUEDA...`);
 
-        // 🎰 ANIMACIÓN RUEDA
-        let frames = ["🎰", "🎲", "🎯", "💰", "🎰"];
+        const slots = ["🎰 7", "🎲 12", "🎯 3", "💰 9", "🎰 1"];
 
-        for (let i = 0; i < frames.length; i++) {
+        for (let i = 0; i < slots.length; i++) {
             setTimeout(() => {
-                bot.editMessageText(`${frames[i]} PROCESANDO PAGO...`, {
+                bot.editMessageText(
+`🎰 SLOT MACHINE
+
+${slots[i]}
+
+⏳ verificando pago...`, {
                     chat_id: tableroChatId,
                     message_id: anim.message_id
                 });
@@ -177,21 +176,26 @@ bot.on('callback_query', async (query) => {
         setTimeout(() => {
 
             numeros[num].estado = "pagado";
-
             totalDinero += 3000;
 
             bot.editMessageText(
-`✅ PAGO APROBADO
+`🎉 APROBADO
 
 👤 ${user}
 🔢 ${num}
-
-💰 +$3.000 CONFIRMADO`, {
+💰 +$3.000 NEQUI`, {
                 chat_id: tableroChatId,
                 message_id: anim.message_id
             });
 
             actualizarTablero();
+
+            bot.sendMessage(tableroChatId,
+`🎰 TABLERO ACTUALIZADO EN VIVO`, {
+                reply_markup: {
+                    inline_keyboard: generarTablero()
+                }
+            });
 
         }, 4000);
 
