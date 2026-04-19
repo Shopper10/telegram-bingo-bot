@@ -21,14 +21,14 @@ function generarTablero() {
 
         const item = numeros[i];
 
-        let texto = `🎱 ${i} Disponible`;
+        let texto = `${i} 🎱 Disponible`;
 
         if (item) {
 
             const u = item.user;
 
             if (item.estado === "reservado") {
-                texto = `${i} ⛔️ ${u} pendiente`;
+                texto = `${i} ⛔️ ${u} reservado`;
             }
 
             if (item.estado === "pagado") {
@@ -78,38 +78,17 @@ function bloqueoAutomatico(num, tiempo = 300000) {
     }, tiempo);
 }
 
-// 🎉 SORTEO GANADOR
-function sortearGanador(chatId) {
+// 🔔 AVISO DE PAGO
+function avisoPago(user, num) {
 
-    let pagados = [];
+    bot.sendMessage(tableroChatId,
+`💰 PAGO RECIBIDO
 
-    for (let n in numeros) {
-        if (numeros[n].estado === "pagado") {
-            pagados.push(n);
-        }
-    }
-
-    if (pagados.length === 0) {
-        bot.sendMessage(chatId, "❌ No hay números pagados para sortear");
-        return;
-    }
-
-    let ganador = pagados[Math.floor(Math.random() * pagados.length)];
-
-    bot.sendMessage(chatId,
-`🎉 GANADOR DEL BINGO 🎉
-
-🎱 Número: ${ganador}
-👤 ${numeros[ganador].user}
-
-🏆 ¡Felicidades!`
+👤 ${user}
+🎱 Número: ${num}
+⛔️ En revisión`
     );
 }
-
-// 🎮 START
-bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, "🎱 Bingo activo\nUsa /bingo para iniciar");
-});
 
 // 🎱 CREAR TABLERO
 bot.onText(/\/bingo/, async (msg) => {
@@ -144,7 +123,7 @@ bot.on('callback_query', (query) => {
     };
 
     actualizarTablero();
-    bloqueoAutomatico(num); // ⏳ tiempo límite
+    bloqueoAutomatico(num);
 
     bot.answerCallbackQuery(query.id, {
         text: "✔ reservado"
@@ -164,8 +143,6 @@ bot.on('photo', (msg) => {
 
     const user = getUser(msg.from);
 
-    const fileId = msg.photo[msg.photo.length - 1].file_id;
-
     let numero = null;
 
     for (let n in numeros) {
@@ -180,17 +157,8 @@ bot.on('photo', (msg) => {
         return;
     }
 
-    numeros[numero].estado = "pendiente";
+    numeros[numero].estado = "pagado";
 
     actualizarTablero();
-
-    bot.sendPhoto(msg.chat.id, fileId, {
-        caption: `💰 Pago recibido\n👤 ${user}\n🎱 Número: ${numero}\n⏳ En revisión`
-    });
-});
-
-// 🎯 COMANDO SORTEO
-bot.onText(/\/sorteo/, (msg) => {
-
-    sortearGanador(msg.chat.id);
+    avisoPago(user, numero);
 });
