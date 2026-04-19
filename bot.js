@@ -8,7 +8,7 @@ let numeros = {};
 let tableroMessageId = null;
 let tableroChatId = null;
 
-// 👤 USER FORMAT
+// 👤 USER
 function getUser(user) {
     return user.username ? `@${user.username}` : user.first_name;
 }
@@ -28,11 +28,7 @@ function generarTablero() {
             const u = item.user;
 
             if (item.estado === "reservado") {
-                texto = `🟡 ${i} ${u}`;
-            }
-
-            if (item.estado === "pendiente") {
-                texto = `🟠 ${i} ${u} ⏳`;
+                texto = `🟡 ${i} ${u} ⏳`;
             }
 
             if (item.estado === "pagado") {
@@ -63,17 +59,64 @@ function actualizarTablero() {
     ).catch(() => {});
 }
 
+// 🎬 ANIMACIÓN SIMPLE (SIMULADA)
+function animarTablero(chatId) {
+
+    let pasos = [
+        "🎱 Preparando bingo...",
+        "🎲 Mezclando números...",
+        "🎯 Listo!"
+    ];
+
+    let i = 0;
+
+    let interval = setInterval(() => {
+
+        bot.editMessageText(pasos[i], {
+            chat_id: chatId,
+            message_id: tableroMessageId
+        }).catch(() => {});
+
+        i++;
+
+        if (i >= pasos.length) {
+            clearInterval(interval);
+            actualizarTablero();
+        }
+
+    }, 700);
+}
+
+// ⛔ BLOQUEO AUTOMÁTICO
+function bloquearAutomatico(num, tiempo = 300000) { // 5 min
+
+    setTimeout(() => {
+
+        if (numeros[num] && numeros[num].estado === "reservado") {
+
+            delete numeros[num];
+
+            actualizarTablero();
+
+            bot.sendMessage(tableroChatId,
+                `⛔ Número ${num} liberado por no pago`
+            );
+        }
+
+    }, tiempo);
+}
+
 // 🎮 START
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, "🎱 Bingo activo\nUsa /bingo para ver el tablero");
+    bot.sendMessage(msg.chat.id, "🎱 Bingo activo\nUsa /bingo para iniciar tablero");
 });
 
-// 🎱 CREAR TABLERO (UNO SOLO)
+// 🎱 CREAR TABLERO
 bot.onText(/\/bingo/, async (msg) => {
 
     tableroChatId = msg.chat.id;
 
-    const sent = await bot.sendMessage(msg.chat.id, "🎱 TABLERO BINGO EN VIVO:", {
+    const sent = await bot.sendMessage(msg.chat.id, "🎱 TABLERO BINGO:", {
         reply_markup: {
             inline_keyboard: generarTablero()
         }
@@ -82,72 +125,41 @@ bot.onText(/\/bingo/, async (msg) => {
     tableroMessageId = sent.message_id;
 });
 
-// 🎯 CALLBACKS (TODO EN GRUPO)
+// 🎯 TOMAR NÚMERO
 bot.on('callback_query', (query) => {
 
-    const data = query.data;
-    const chatId = query.message.chat.id;
-
+    const num = parseInt(query.data.split("_")[1]);
     const user = getUser(query.from);
 
-    // 🎱 TOMAR NÚMERO
-    if (data.startsWith("num_")) {
-
-        const num = parseInt(data.split("_")[1]);
-
-        if (numeros[num]) {
-            bot.answerCallbackQuery(query.id, {
-                text: "❌ No disponible"
-            });
-            return;
-        }
-
-        numeros[num] = {
-            user: user,
-            estado: "reservado"
-        };
-
+    if (numeros[num]) {
         bot.answerCallbackQuery(query.id, {
-            text: `🟡 Reservado ${num}`
+            text: "❌ Ocupado"
         });
+        return;
+    }
 
-        actualizarTablero();
+    numeros[num] = {
+        user: user,
+        estado: "reservado"
+    };
 
-        bot.sendMessage(chatId,
+    actualizarTablero();
+
+    bloquearAutomatico(num); // ⏳ activa tiempo límite
+
+    bot.answerCallbackQuery(query.id, {
+        text: "✔ reservado"
+    });
+
+    bot.sendMessage(tableroChatId,
 `🟡 ${user} reservaste el número ${num}
 
-💰 Paga y envía comprobante en el grupo`
-        );
-    }
-
-    // 💰 APROBAR / RECHAZAR (GRUPO)
-    if (data.startsWith("ok_") || data.startsWith("no_")) {
-
-        const num = parseInt(data.split("_")[1]);
-
-        if (!numeros[num]) return;
-
-        if (data.startsWith("ok_")) {
-
-            numeros[num].estado = "pagado";
-
-        } else {
-
-            delete numeros[num];
-        }
-
-        actualizarTablero();
-
-        bot.answerCallbackQuery(query.id, {
-            text: "✔ actualizado"
-        });
-    }
+💰 Envía tu pago en el grupo`
+    );
 });
 
-// 📸 FOTO EN GRUPO → BOTONES EN EL MISMO GRUPO
+// 📸 PAGO EN GRUPO
 bot.on('photo', (msg) => {
-
-    const chatId = msg.chat.id;
 
     if (msg.chat.type === "private") return;
 
@@ -165,24 +177,18 @@ bot.on('photo', (msg) => {
     }
 
     if (!numero) {
-        bot.sendMessage(chatId, `❌ ${user} no tiene número reservado`);
+        bot.sendMessage(msg.chat.id, `❌ ${user} no tiene número reservado`);
         return;
     }
 
-    numeros[numero].estado = "pendiente";
+    numeros[numero].estado = "reservado"; // sigue pendiente hasta aprobación
 
     actualizarTablero();
 
-    // 📩 MENSAJE EN EL GRUPO (BOTONES AQUÍ MISMO)
-    bot.sendPhoto(chatId, fileId, {
-        caption: `💰 COMPROBANTE\n👤 ${user}\n🎱 Número: ${numero}`,
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: "✅ APROBAR", callback_data: `ok_${numero}` },
-                    { text: "❌ RECHAZAR", callback_data: `no_${numero}` }
-                ]
-            ]
-        }
+    // 🎬 pequeña “animación visual”
+    animarTablero(tableroChatId);
+
+    bot.sendPhoto(msg.chat.id, fileId, {
+        caption: `💰 Pago recibido\n👤 ${user}\n🎱 Número: ${numero}\n⏳ Esperando confirmación`
     });
 });
