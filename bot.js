@@ -312,4 +312,13 @@ bot.on('callback_query', async (query) => {
 
         bot.answerCallbackQuery(query.id, { text: "Procesando..." });
     }
+});const express = require('express');
+const app = express();
+
+app.get('/', (req, res) => {
+    res.send('Bot activo');
+});
+
+app.listen(process.env.PORT || 3000, () => {
+    console.log('Servidor activo');
 });
