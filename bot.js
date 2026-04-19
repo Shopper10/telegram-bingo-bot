@@ -3,20 +3,19 @@ const TelegramBot = require('node-telegram-bot-api');
 const token = process.env.TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
-// 📦 Estado global
-let numerosReservados = {};
+let numeros = {}; // {1: {user, estado}}
 
-// 🎮 /start
-bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, "🎱 Bingo activo\nUsa /numeros");
-});
-
-// 🔄 Generar teclado dinámico
+// 🔄 Generar teclado con estados
 function generarTeclado() {
     let keyboard = [];
 
     for (let i = 1; i <= 15; i++) {
-        let estado = numerosReservados[i] ? "🔴" : "🟢";
+        let estado = "🟢";
+
+        if (numeros[i]) {
+            if (numeros[i].estado === "reservado") estado = "🟡";
+            if (numeros[i].estado === "pagado") estado = "🔴";
+        }
 
         keyboard.push([{
             text: `${estado} ${i}`,
@@ -27,7 +26,12 @@ function generarTeclado() {
     return keyboard;
 }
 
-// 🎱 Mostrar números
+// 🎮 START
+bot.onText(/\/start/, (msg) => {
+    bot.sendMessage(msg.chat.id, "🎱 Bingo activo\nUsa /numeros");
+});
+
+// 🎱 MOSTRAR NÚMEROS
 bot.onText(/\/numeros/, (msg) => {
     bot.sendMessage(msg.chat.id, "🎱 Elige tu número:", {
         reply_markup: {
@@ -36,7 +40,7 @@ bot.onText(/\/numeros/, (msg) => {
     });
 });
 
-// 🎯 Click en número
+// 🎯 CLICK NÚMERO
 bot.on('callback_query', (query) => {
     const chatId = query.message.chat.id;
     const messageId = query.message.message_id;
@@ -45,42 +49,70 @@ bot.on('callback_query', (query) => {
         ? `@${query.from.username}`
         : query.from.first_name;
 
-    const num = query.data.split("_")[1];
+    const num = parseInt(query.data.split("_")[1]);
 
-    // ❌ Ya ocupado
-    if (numerosReservados[num]) {
+    // ❌ ya ocupado
+    if (numeros[num]) {
         bot.answerCallbackQuery(query.id, {
-            text: "❌ Ya está ocupado"
+            text: "❌ Número no disponible"
         });
         return;
     }
 
-    // ✔ Reservar
-    numerosReservados[num] = {
-        user: user
+    // 🟡 reservar
+    numeros[num] = {
+        user: user,
+        estado: "reservado"
     };
 
     bot.answerCallbackQuery(query.id, {
-        text: `✔ Tomaste el ${num}`
+        text: `🟡 Reservaste ${num}`
     });
 
-    // 🔄 ACTUALIZAR BOTONES EN VIVO
     bot.editMessageReplyMarkup(
-        {
-            inline_keyboard: generarTeclado()
-        },
-        {
-            chat_id: chatId,
-            message_id: messageId
-        }
+        { inline_keyboard: generarTeclado() },
+        { chat_id: chatId, message_id: messageId }
     );
 
-    // 📢 Aviso en grupo
-    bot.sendMessage(chatId, `🎟 ${user} tomó el número ${num}`);
+    bot.sendMessage(chatId,
+        `🟡 ${user} reservó el número ${num}\n💰 Pendiente de pago`
+    );
 });
 
-// 🔄 Reset
+// 💰 CONFIRMAR PAGO (ADMIN)
+bot.onText(/\/pagar (\d+)/, (msg, match) => {
+    const num = parseInt(match[1]);
+
+    if (!numeros[num]) {
+        bot.sendMessage(msg.chat.id, "❌ Ese número no está reservado");
+        return;
+    }
+
+    numeros[num].estado = "pagado";
+
+    bot.sendMessage(msg.chat.id,
+        `🔴 Número ${num} confirmado como PAGADO por ${numeros[num].user}`
+    );
+});
+
+// 🔓 LIBERAR NÚMERO
+bot.onText(/\/liberar (\d+)/, (msg, match) => {
+    const num = parseInt(match[1]);
+
+    if (!numeros[num]) {
+        bot.sendMessage(msg.chat.id, "❌ Ese número no existe");
+        return;
+    }
+
+    delete numeros[num];
+
+    bot.sendMessage(msg.chat.id,
+        `🟢 Número ${num} liberado nuevamente`
+    );
+});
+
+// 🔄 RESET
 bot.onText(/\/reset/, (msg) => {
-    numerosReservados = {};
-    bot.sendMessage(msg.chat.id, "🔄 Reiniciado");
+    numeros = {};
+    bot.sendMessage(msg.chat.id, "🔄 Bingo reiniciado");
 });
