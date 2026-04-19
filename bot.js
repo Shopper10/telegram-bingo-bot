@@ -23,22 +23,22 @@ function generarTablero() {
 
         const item = numeros[i];
 
-        let texto = `${i} 🟢 Disponible`;
+        let texto = `🟢 ${i} - DISPONIBLE`;
 
         if (item) {
 
             const u = item.user;
 
             if (item.estado === "reservado") {
-                texto = `${i} ⛔️ ${u} reservado`;
+                texto = `⛔️ ${i} - ${u} RESERVADO`;
             }
 
             if (item.estado === "pendiente") {
-                texto = `${i} ⏳ ${u} pendiente`;
+                texto = `⏱️ ${i} - ${u} PENDIENTE`;
             }
 
             if (item.estado === "pagado") {
-                texto = `${i} ✅ ${u} pagado`;
+                texto = `✅ ${i} - ${u} PAGADO`;
             }
         }
 
@@ -65,7 +65,7 @@ function actualizarTablero() {
     ).catch(() => {});
 }
 
-// ⏳ BLOQUEO AUTOMÁTICO (5 MIN)
+// ⏱️ TIMER 5 MIN (AUTOMÁTICO)
 function bloqueoAutomatico(num, tiempo = 300000) {
 
     setTimeout(() => {
@@ -83,7 +83,7 @@ function bloqueoAutomatico(num, tiempo = 300000) {
 
 🔢 ${num}
 👤 ${user}
-⌛ sin pago`
+⌛ Tiempo agotado sin pago`
             );
         }
 
@@ -132,15 +132,21 @@ bot.on('callback_query', (query) => {
         text: `✔ ${user} tomó ${num}`
     });
 
+    // 💥 MENSAJE IMPORTANTE PARA EL CLIENTE
     bot.sendMessage(tableroChatId,
-`🎰 RESERVA
+`🎯 NÚMERO RESERVADO
 
 👤 ${user}
-🔢 Número: ${num}`
+🔢 Número: ${num}
+
+💰 Por favor realiza pago de $3.000 a NEQUI
+📸 Envía la captura de pago aquí en el grupo
+
+⏱️ Tienes 5 minutos para confirmar`
     );
 });
 
-// 📸 FOTO → PAGO AL GRUPO → BOTÓN EN MISMO GRUPO
+// 📸 FOTO → ENVÍA AL ADMIN EN EL GRUPO
 bot.on('photo', (msg) => {
 
     if (msg.chat.type === "private") return;
@@ -166,18 +172,17 @@ bot.on('photo', (msg) => {
 
     actualizarTablero();
 
-    // 💬 aviso grupo
     bot.sendMessage(tableroChatId,
-`💰 PAGO RECIBIDO
+`⏱️ PAGO RECIBIDO
 
 👤 ${user}
 🔢 Número: ${numero}
-⏳ En revisión`
+⏳ En validación por admin`
     );
 
-    // 📥 BOTONES EN EL MISMO GRUPO
+    // 📥 BOTONES EN EL GRUPO
     bot.sendPhoto(tableroChatId, fileId, {
-        caption: `📥 PAGO PENDIENTE
+        caption: `📥 VERIFICAR PAGO
 
 👤 ${user}
 🔢 Número: ${numero}`,
