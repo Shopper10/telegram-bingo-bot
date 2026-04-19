@@ -11,7 +11,7 @@ let tableroChatId = null;
 let tableroMessageId = null;
 let totalDinero = 0;
 
-// ⏱️ timers
+// ⏱️ control
 let timers = {};
 let startTimes = {};
 let alertados = {};
@@ -29,7 +29,7 @@ function formatTiempo(ms) {
     return `${min}:${sec.toString().padStart(2, '0')}`;
 }
 
-// 🎰 TABLERO (CON CONTADOR)
+// 🎰 TABLERO
 function generarTablero() {
     let keyboard = [];
 
@@ -39,15 +39,17 @@ function generarTablero() {
         let texto = `🟢 ${i} - DISPONIBLE`;
 
         if (item) {
+
             const u = item.user.name;
 
             if (item.estado === "reservado") {
 
                 let tiempo = "";
+
                 if (startTimes[i]) {
                     let restante = 300000 - (Date.now() - startTimes[i]);
                     tiempo = ` ${formatTiempo(restante)}`;
-                    
+
                     // ⚠️ alerta 30s
                     if (restante <= 30000 && !alertados[i]) {
                         alertados[i] = true;
@@ -85,7 +87,6 @@ function generarTablero() {
 
 // 🔄 ACTUALIZAR TABLERO
 function actualizarTablero() {
-
     if (!tableroChatId || !tableroMessageId) return;
 
     bot.editMessageReplyMarkup(
@@ -97,7 +98,7 @@ function actualizarTablero() {
     ).catch(() => {});
 }
 
-// 🔁 REFRESH MÁS RÁPIDO (para contador fluido)
+// 🔁 REFRESH
 setInterval(() => {
     actualizarTablero();
 }, 5000);
@@ -234,7 +235,7 @@ bot.on('photo', (msg) => {
     });
 });
 
-// 🔥 ADMIN
+// 🔥 ADMIN (CON SLOT + REPOST)
 bot.on('callback_query', async (query) => {
 
     const data = query.data;
@@ -250,29 +251,65 @@ bot.on('callback_query', async (query) => {
 
     const user = numeros[num].user.name;
 
+    // ❌ RECHAZAR
     if (data.startsWith("no_")) {
 
         delete numeros[num];
+
         actualizarTablero();
 
         bot.sendMessage(tableroChatId,
-`❌ RECHAZADO
+`❌ PAGO RECHAZADO
 
 🔢 ${num}
 👤 ${user}`);
     }
 
+    // ✅ APROBAR (CON ANIMACIÓN)
     if (data.startsWith("ok_")) {
 
-        numeros[num].estado = "pagado";
-        totalDinero += 3000;
+        const anim = await bot.sendMessage(tableroChatId,
+`🎰 GIRANDO RUEDA...`);
 
-        actualizarTablero();
+        const slots = ["🎰", "🎲", "🎯", "💰", "🎉"];
 
-        bot.sendMessage(tableroChatId,
-`✅ APROBADO
+        for (let i = 0; i < slots.length; i++) {
+            setTimeout(() => {
+                bot.editMessageText(
+`${slots[i]} Verificando pago...`, {
+                    chat_id: tableroChatId,
+                    message_id: anim.message_id
+                });
+            }, i * 600);
+        }
+
+        setTimeout(() => {
+
+            numeros[num].estado = "pagado";
+            totalDinero += 3000;
+
+            bot.editMessageText(
+`✅ PAGO APROBADO
 
 👤 ${user}
-🔢 ${num}`);
+🔢 ${num}
+💰 +$3.000`, {
+                chat_id: tableroChatId,
+                message_id: anim.message_id
+            });
+
+            actualizarTablero();
+
+            // 📢 REPOST TABLERO
+            bot.sendMessage(tableroChatId,
+`🎰 TABLERO ACTUALIZADO EN VIVO`, {
+                reply_markup: {
+                    inline_keyboard: generarTablero()
+                }
+            });
+
+        }, 3500);
+
+        bot.answerCallbackQuery(query.id, { text: "Procesando..." });
     }
 });
