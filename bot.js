@@ -12,7 +12,7 @@ const NEQUI_NOMBRE = "Carlos";
 let numeros = {};
 
 // =========================
-// 👤 USER HELP
+// 👤 USER HELPER
 // =========================
 function getUser(user) {
     return user.username ? `@${user.username}` : user.first_name;
@@ -68,18 +68,17 @@ bot.onText(/\/bingo/, (msg) => {
 });
 
 // =========================
-// 🎯 CALLBACK ÚNICO (ARREGLADO)
+// 🎯 CALLBACK GENERAL
 // =========================
 bot.on('callback_query', (query) => {
 
     const data = query.data;
     const chatId = query.message.chat.id;
-    const messageId = query.message.message_id;
 
     const user = getUser(query.from);
 
     // =====================
-    // 🎱 SELECCIÓN NÚMERO
+    // 🎱 TOMAR NÚMERO
     // =====================
     if (data.startsWith("num_")) {
 
@@ -100,14 +99,6 @@ bot.on('callback_query', (query) => {
         bot.answerCallbackQuery(query.id, {
             text: `🟡 Reservado ${num}`
         });
-
-        bot.editMessageReplyMarkup(
-            { inline_keyboard: generarTablero() },
-            {
-                chat_id: chatId,
-                message_id: messageId
-            }
-        ).catch(() => {});
 
         bot.sendMessage(chatId,
 `🟡 ${user} reservaste el número ${num}
@@ -133,7 +124,7 @@ bot.on('callback_query', (query) => {
 
             numeros[num].estado = "pagado";
 
-            bot.sendMessage(chatId,
+            bot.sendMessage(ADMIN_ID,
                 `🔴 Número ${num} APROBADO`
             );
 
@@ -141,7 +132,7 @@ bot.on('callback_query', (query) => {
 
             delete numeros[num];
 
-            bot.sendMessage(chatId,
+            bot.sendMessage(ADMIN_ID,
                 `❌ Número ${num} RECHAZADO`
             );
         }
@@ -151,13 +142,12 @@ bot.on('callback_query', (query) => {
 });
 
 // =========================
-// 📸 FOTO EN GRUPO (CLAVE)
+// 📸 FOTO EN GRUPO → ADMIN
 // =========================
 bot.on('photo', (msg) => {
 
     const chatId = msg.chat.id;
 
-    // 🚫 ignorar privados
     if (msg.chat.type === "private") return;
 
     const user = getUser(msg.from);
@@ -178,9 +168,9 @@ bot.on('photo', (msg) => {
         return;
     }
 
-    // 📩 MENSAJE EN GRUPO CON BOTONES
-    bot.sendPhoto(chatId, fileId, {
-        caption: `💰 COMPROBANTE\n👤 ${user}\n🎱 Número: ${numero}`,
+    // 📩 ENVIAR AL ADMIN (AQUÍ SÍ FUNCIONAN BOTONES SI O SI)
+    bot.sendPhoto(ADMIN_ID, fileId, {
+        caption: `💰 NUEVO COMPROBANTE\n👤 ${user}\n🎱 Número: ${numero}`,
         reply_markup: {
             inline_keyboard: [
                 [
@@ -190,4 +180,6 @@ bot.on('photo', (msg) => {
             ]
         }
     });
+
+    bot.sendMessage(chatId, "⏳ Pago enviado al admin para revisión...");
 });
