@@ -1,14 +1,11 @@
 const TelegramBot = require('node-telegram-bot-api');
 
-// 🔑 IMPORTANTE: luego esto lo pasas a variable de entorno en Render
-const token = process.env.TOKEN || 'TU_TOKEN_AQUI';
+const token = process.env.TOKEN;
 
 const bot = new TelegramBot(token, { polling: true });
 
-// 📦 Base de datos simple en memoria (luego se mejora con DB real)
 let numerosReservados = {};
 
-// 🎮 /start
 bot.onText(/\/start/, (msg) => {
     bot.sendMessage(
         msg.chat.id,
@@ -16,7 +13,6 @@ bot.onText(/\/start/, (msg) => {
     );
 });
 
-// 🎱 Mostrar números en forma vertical con botones
 bot.onText(/\/numeros/, (msg) => {
     const chatId = msg.chat.id;
 
@@ -38,17 +34,22 @@ bot.onText(/\/numeros/, (msg) => {
     });
 });
 
-// 🎯 Cuando presionan un número
 bot.on('callback_query', (query) => {
     const chatId = query.message.chat.id;
-    const user = query.from.username || query.from.first_name;
+
+    const user = query.from.username
+        ? `@${query.from.username}`
+        : query.from.first_name;
+
     const data = query.data;
 
-    if (!data.startsWith("num_")) return;
+    if (!data.startsWith("num_")) {
+        bot.answerCallbackQuery(query.id);
+        return;
+    }
 
     const num = data.split("_")[1];
 
-    // ❌ Si ya está reservado
     if (numerosReservados[num]) {
         bot.answerCallbackQuery(query.id, {
             text: `❌ El número ${num} ya está ocupado`
@@ -56,7 +57,6 @@ bot.on('callback_query', (query) => {
         return;
     }
 
-    // ✔ Reservar número
     numerosReservados[num] = {
         user: user,
         status: "reservado"
@@ -66,13 +66,9 @@ bot.on('callback_query', (query) => {
         text: `✔ Número ${num} reservado`
     });
 
-    bot.sendMessage(
-        chatId,
-        `🎟 @${user} reservó el número ${num}`
-    );
+    bot.sendMessage(chatId, `🎟 ${user} reservó el número ${num}`);
 });
 
-// 🔄 Reset (opcional admin)
 bot.onText(/\/reset/, (msg) => {
     numerosReservados = {};
     bot.sendMessage(msg.chat.id, "🔄 Bingo reiniciado");
