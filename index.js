@@ -1,10 +1,8 @@
 const TelegramBot = require('node-telegram-bot-api');
 
-// 🔑 VARIABLES
 const token = process.env.TOKEN;
 const ADMIN_ID = Number(process.env.ADMIN_ID);
 
-// 🤖 BOT
 const bot = new TelegramBot(token, { polling: true });
 
 // 📦 DATA
@@ -150,105 +148,90 @@ function iniciarTimer(num) {
     }, 300000);
 }
 
-// 🎯 CLICK NÚMERO
-bot.on('callback_query', (query) => {
+// 🎯 CALLBACK UNICO (ARREGLADO)
+bot.on('callback_query', async (query) => {
 
-    const num = parseInt(query.data.split("_")[1]);
-    const user = getUser(query.from);
+    try {
 
-    if (numeros[num]) {
-        bot.answerCallbackQuery(query.id, { text: "❌ Ocupado" });
-        return;
-    }
+        const data = query.data;
+        const user = getUser(query.from);
 
-    numeros[num] = {
-        user: {
-            id: query.from.id,
-            name: user
-        },
-        estado: "reservado"
-    };
+        // 🎯 TOMAR NÚMERO
+        if (data.startsWith("num_")) {
 
-    iniciarTimer(num);
-    actualizarTablero();
+            const num = parseInt(data.split("_")[1]);
 
-    bot.sendMessage(tableroChatId,
-`🎯 RESERVADO
+            if (numeros[num]) {
+                bot.answerCallbackQuery(query.id, { text: "❌ Ocupado" });
+                return;
+            }
+
+            numeros[num] = {
+                user: {
+                    id: query.from.id,
+                    name: user
+                },
+                estado: "reservado"
+            };
+
+            iniciarTimer(num);
+            actualizarTablero();
+
+            bot.sendMessage(tableroChatId,
+`🎯 NÚMERO TOMADO
 
 👤 ${user}
 🔢 ${num}
 
-💰 $3.000 NEQUI`);
-});
+⏱️ 5 minutos para pagar`);
 
-// 📸 FOTO
-bot.on('photo', (msg) => {
-
-    const userId = msg.from.id;
-
-    let numero = null;
-
-    for (let n in numeros) {
-        if (numeros[n].user.id === userId && numeros[n].estado === "reservado") {
-            numero = n;
-            break;
+            bot.answerCallbackQuery(query.id);
+            return;
         }
-    }
 
-    if (!numero) return;
+        // 🔒 ADMIN
+        if (query.from.id !== ADMIN_ID) {
+            bot.answerCallbackQuery(query.id, { text: "⛔ No autorizado" });
+            return;
+        }
 
-    clearTimeout(timers[numero]);
+        const num = parseInt(data.split("_")[1]);
+        if (!numeros[num]) return;
 
-    numeros[numero].estado = "pendiente";
+        const name = numeros[num].user.name;
 
-    actualizarTablero();
+        // ❌ RECHAZAR
+        if (data.startsWith("no_")) {
 
-    bot.sendMessage(tableroChatId,
-`📥 PAGO RECIBIDO
+            delete numeros[num];
+            actualizarTablero();
 
-🔢 ${numero}
-
-⏳ En revisión`);
-});
-
-// 🔥 ADMIN
-bot.on('callback_query', async (query) => {
-
-    const data = query.data;
-    const userId = query.from.id;
-
-    if (userId !== ADMIN_ID) return;
-
-    const num = parseInt(data.split("_")[1]);
-    if (!numeros[num]) return;
-
-    const user = numeros[num].user.name;
-
-    // ❌ RECHAZAR
-    if (data.startsWith("no_")) {
-
-        delete numeros[num];
-        actualizarTablero();
-
-        bot.sendMessage(tableroChatId,
+            bot.sendMessage(tableroChatId,
 `❌ RECHAZADO
 
 🔢 ${num}
-👤 ${user}`);
-    }
+👤 ${name}`);
 
-    // ✅ APROBAR
-    if (data.startsWith("ok_")) {
+            return;
+        }
 
-        numeros[num].estado = "pagado";
-        totalDinero += 3000;
+        // ✅ APROBAR (TU RUEDA SE MANTIENE)
+        if (data.startsWith("ok_")) {
 
-        actualizarTablero();
+            numeros[num].estado = "pagado";
+            totalDinero += 3000;
 
-        bot.sendMessage(tableroChatId,
-`🎉 APROBADO
+            actualizarTablero();
 
-👤 ${user}
-🔢 ${num}`);
+            bot.sendMessage(tableroChatId,
+`🎰 APROBADO
+
+👤 ${name}
+🔢 ${num}
+💰 +$3.000`);
+        }
+
+    } catch (err) {
+        console.log("ERROR CALLBACK:", err);
     }
 });
