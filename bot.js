@@ -4,15 +4,15 @@ const token = process.env.TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
 // ⚙️ CONFIG
-const ADMIN_ID = 1448948861; // 👈 CAMBIAR
-const NEQUI_NUMERO = "3123902322";
+const ADMIN_ID = 123456789; // 👈 CAMBIAR TU ID
+const NEQUI_NUMERO = "3001234567";
 const NEQUI_NOMBRE = "Carlos";
 
 // 📦 memoria
 let numeros = {};
 
 // =========================
-// 👤 usuario
+// 👤 USER HELP
 // =========================
 function getUser(user) {
     return user.username ? `@${user.username}` : user.first_name;
@@ -53,14 +53,14 @@ function generarTablero() {
 // 🎮 START
 // =========================
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, "🎱 Bingo activo\nUsa /bingo para ver el tablero");
+    bot.sendMessage(msg.chat.id, "🎱 Bingo activo\nUsa /bingo para ver números");
 });
 
 // =========================
 // 🎱 MOSTRAR TABLERO
 // =========================
 bot.onText(/\/bingo/, (msg) => {
-    bot.sendMessage(msg.chat.id, "🎱 TABLERO BINGO:", {
+    bot.sendMessage(msg.chat.id, "🎱 TABLERO:", {
         reply_markup: {
             inline_keyboard: generarTablero()
         }
@@ -68,7 +68,7 @@ bot.onText(/\/bingo/, (msg) => {
 });
 
 // =========================
-// 🎯 ELEGIR NÚMERO
+// 🎯 CALLBACK ÚNICO (ARREGLADO)
 // =========================
 bot.on('callback_query', (query) => {
 
@@ -101,7 +101,6 @@ bot.on('callback_query', (query) => {
             text: `🟡 Reservado ${num}`
         });
 
-        // 🔄 actualizar tablero
         bot.editMessageReplyMarkup(
             { inline_keyboard: generarTablero() },
             {
@@ -117,7 +116,7 @@ bot.on('callback_query', (query) => {
 📱 ${NEQUI_NUMERO}
 👤 ${NEQUI_NOMBRE}
 
-📸 Envía comprobante aquí`
+📸 Envía la captura en el grupo`
         );
     }
 
@@ -134,7 +133,7 @@ bot.on('callback_query', (query) => {
 
             numeros[num].estado = "pagado";
 
-            bot.sendMessage(ADMIN_ID,
+            bot.sendMessage(chatId,
                 `🔴 Número ${num} APROBADO`
             );
 
@@ -142,7 +141,7 @@ bot.on('callback_query', (query) => {
 
             delete numeros[num];
 
-            bot.sendMessage(ADMIN_ID,
+            bot.sendMessage(chatId,
                 `❌ Número ${num} RECHAZADO`
             );
         }
@@ -152,11 +151,17 @@ bot.on('callback_query', (query) => {
 });
 
 // =========================
-// 📸 COMPROBANTE
+// 📸 FOTO EN GRUPO (CLAVE)
 // =========================
 bot.on('photo', (msg) => {
 
+    const chatId = msg.chat.id;
+
+    // 🚫 ignorar privados
+    if (msg.chat.type === "private") return;
+
     const user = getUser(msg.from);
+
     const fileId = msg.photo[msg.photo.length - 1].file_id;
 
     let numero = null;
@@ -169,12 +174,12 @@ bot.on('photo', (msg) => {
     }
 
     if (!numero) {
-        bot.sendMessage(msg.chat.id, "❌ No tienes número reservado");
+        bot.sendMessage(chatId, `❌ ${user} no tiene número reservado`);
         return;
     }
 
-    // 📩 ENVIAR AL ADMIN CON BOTONES
-    bot.sendPhoto(ADMIN_ID, fileId, {
+    // 📩 MENSAJE EN GRUPO CON BOTONES
+    bot.sendPhoto(chatId, fileId, {
         caption: `💰 COMPROBANTE\n👤 ${user}\n🎱 Número: ${numero}`,
         reply_markup: {
             inline_keyboard: [
@@ -185,6 +190,4 @@ bot.on('photo', (msg) => {
             ]
         }
     });
-
-    bot.sendMessage(msg.chat.id, "⏳ Esperando aprobación...");
 });
