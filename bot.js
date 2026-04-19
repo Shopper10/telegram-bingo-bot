@@ -4,15 +4,15 @@ const token = process.env.TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
 // ⚙️ CONFIG
-const ADMIN_ID = 1448948861; // 👈 CAMBIAR
-const NEQUI_NUMERO = "3123902322";
+const ADMIN_ID = 123456789; // 👈 CAMBIAR
+const NEQUI_NUMERO = "3001234567";
 const NEQUI_NOMBRE = "Carlos";
 
 // 📦 memoria
 let numeros = {};
 
 // =========================
-// 👤 usuario helper
+// 👤 usuario
 // =========================
 function getUser(user) {
     return user.username ? `@${user.username}` : user.first_name;
@@ -53,14 +53,14 @@ function generarTablero() {
 // 🎮 START
 // =========================
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, "🎱 Bingo activo\nUsa /bingo");
+    bot.sendMessage(msg.chat.id, "🎱 Bingo activo\nUsa /bingo para ver el tablero");
 });
 
 // =========================
 // 🎱 MOSTRAR TABLERO
 // =========================
 bot.onText(/\/bingo/, (msg) => {
-    bot.sendMessage(msg.chat.id, "🎱 TABLERO:", {
+    bot.sendMessage(msg.chat.id, "🎱 TABLERO BINGO:", {
         reply_markup: {
             inline_keyboard: generarTablero()
         }
@@ -68,42 +68,49 @@ bot.onText(/\/bingo/, (msg) => {
 });
 
 // =========================
-// 🎯 RESERVAR NÚMERO
+// 🎯 ELEGIR NÚMERO
 // =========================
 bot.on('callback_query', (query) => {
 
+    const data = query.data;
     const chatId = query.message.chat.id;
     const messageId = query.message.message_id;
 
-    const num = parseInt(query.data.split("_")[1]);
     const user = getUser(query.from);
 
-    if (numeros[num]) {
-        bot.answerCallbackQuery(query.id, {
-            text: "❌ No disponible"
-        });
-        return;
-    }
+    // =====================
+    // 🎱 SELECCIÓN NÚMERO
+    // =====================
+    if (data.startsWith("num_")) {
 
-    numeros[num] = {
-        user: user,
-        estado: "reservado"
-    };
+        const num = parseInt(data.split("_")[1]);
 
-    bot.answerCallbackQuery(query.id, {
-        text: `🟡 Reservado ${num}`
-    });
-
-    // 🔄 actualizar tablero
-    bot.editMessageReplyMarkup(
-        { inline_keyboard: generarTablero() },
-        {
-            chat_id: chatId,
-            message_id: messageId
+        if (numeros[num]) {
+            bot.answerCallbackQuery(query.id, {
+                text: "❌ No disponible"
+            });
+            return;
         }
-    ).catch(() => {});
 
-    bot.sendMessage(chatId,
+        numeros[num] = {
+            user: user,
+            estado: "reservado"
+        };
+
+        bot.answerCallbackQuery(query.id, {
+            text: `🟡 Reservado ${num}`
+        });
+
+        // 🔄 actualizar tablero
+        bot.editMessageReplyMarkup(
+            { inline_keyboard: generarTablero() },
+            {
+                chat_id: chatId,
+                message_id: messageId
+            }
+        ).catch(() => {});
+
+        bot.sendMessage(chatId,
 `🟡 ${user} reservaste el número ${num}
 
 💰 Paga a Nequi:
@@ -111,11 +118,41 @@ bot.on('callback_query', (query) => {
 👤 ${NEQUI_NOMBRE}
 
 📸 Envía comprobante aquí`
-    );
+        );
+    }
+
+    // =====================
+    // 💰 APROBAR / RECHAZAR
+    // =====================
+    if (data.startsWith("ok_") || data.startsWith("no_")) {
+
+        const num = parseInt(data.split("_")[1]);
+
+        if (!numeros[num]) return;
+
+        if (data.startsWith("ok_")) {
+
+            numeros[num].estado = "pagado";
+
+            bot.sendMessage(ADMIN_ID,
+                `🔴 Número ${num} APROBADO`
+            );
+
+        } else {
+
+            delete numeros[num];
+
+            bot.sendMessage(ADMIN_ID,
+                `❌ Número ${num} RECHAZADO`
+            );
+        }
+
+        bot.answerCallbackQuery(query.id);
+    }
 });
 
 // =========================
-// 📸 RECIBIR COMPROBANTE
+// 📸 COMPROBANTE
 // =========================
 bot.on('photo', (msg) => {
 
@@ -138,59 +175,16 @@ bot.on('photo', (msg) => {
 
     // 📩 ENVIAR AL ADMIN CON BOTONES
     bot.sendPhoto(ADMIN_ID, fileId, {
-        caption: `💰 COMPROBANTE DE PAGO\n\n👤 Usuario: ${user}\n🎱 Número: ${numero}`,
+        caption: `💰 COMPROBANTE\n👤 ${user}\n🎱 Número: ${numero}`,
         reply_markup: {
             inline_keyboard: [
                 [
-                    {
-                        text: "✅ APROBAR",
-                        callback_data: `ok_${numero}`
-                    },
-                    {
-                        text: "❌ RECHAZAR",
-                        callback_data: `no_${numero}`
-                    }
+                    { text: "✅ APROBAR", callback_data: `ok_${numero}` },
+                    { text: "❌ RECHAZAR", callback_data: `no_${numero}` }
                 ]
             ]
         }
     });
 
-    bot.sendMessage(msg.chat.id, "⏳ Pago enviado, esperando aprobación...");
-});
-
-// =========================
-// ✅ / ❌ APROBAR PAGO
-// =========================
-bot.on('callback_query', (query) => {
-
-    if (!query.data.startsWith("ok_") && !query.data.startsWith("no_")) return;
-
-    const num = parseInt(query.data.split("_")[1]);
-
-    if (!numeros[num]) return;
-
-    if (query.data.startsWith("ok_")) {
-
-        numeros[num].estado = "pagado";
-
-        bot.sendMessage(ADMIN_ID,
-            `🔴 Número ${num} APROBADO`
-        );
-
-    } else {
-
-        delete numeros[num];
-
-        bot.sendMessage(ADMIN_ID,
-            `❌ Pago rechazado número ${num}`
-        );
-    }
-});
-
-// =========================
-// 🔄 RESET
-// =========================
-bot.onText(/\/reset/, (msg) => {
-    numeros = {};
-    bot.sendMessage(msg.chat.id, "🔄 Bingo reiniciado");
+    bot.sendMessage(msg.chat.id, "⏳ Esperando aprobación...");
 });
