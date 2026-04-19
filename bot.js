@@ -1,6 +1,8 @@
 const TelegramBot = require('node-telegram-bot-api');
 
 const token = process.env.TOKEN;
+const ADMIN_ID = Number(process.env.ADMIN_ID);
+
 const bot = new TelegramBot(token, { polling: true });
 
 // 📦 DATA
@@ -8,12 +10,12 @@ let numeros = {};
 let tableroMessageId = null;
 let tableroChatId = null;
 
-// 👤 USERNAME
+// 👤 USER
 function getUser(user) {
     return user.username ? `@${user.username}` : user.first_name;
 }
 
-// 🎱 TABLERO 1–15 (FORMATO EXACTO)
+// 🎱 TABLERO 1–15
 function generarTablero() {
     let keyboard = [];
 
@@ -59,6 +61,30 @@ function actualizarTablero() {
     ).catch(() => {});
 }
 
+// ⏳ BLOQUEO AUTOMÁTICO (5 MIN)
+function bloqueoAutomatico(num, tiempo = 300000) {
+
+    setTimeout(() => {
+
+        if (numeros[num] && numeros[num].estado === "reservado") {
+
+            const user = numeros[num].user;
+
+            delete numeros[num];
+
+            actualizarTablero();
+
+            bot.sendMessage(tableroChatId,
+`⛔️ Número liberado por falta de pago
+
+🔢 Número: ${num}
+👤 ${user}`
+            );
+        }
+
+    }, tiempo);
+}
+
 // 🎱 CREAR TABLERO
 bot.onText(/\/bingo/, async (msg) => {
 
@@ -93,23 +119,27 @@ bot.on('callback_query', (query) => {
 
     actualizarTablero();
 
+    bloqueoAutomatico(num);
+
     bot.answerCallbackQuery(query.id, {
-        text: "✔ reservado"
+        text: `✔ ${user} tomó ${num}`
     });
 
     bot.sendMessage(tableroChatId,
-`🟡 ${user} reservaste el número ${num}
+`🎱 ${user} reservó el número ${num}
 
-💰 Envía tu pago en el grupo`
+💰 Envía tu pago con comprobante`
     );
 });
 
-// 📸 PAGO EN GRUPO
+// 📸 FOTO EN GRUPO → ENVÍA AL ADMIN
 bot.on('photo', (msg) => {
 
     if (msg.chat.type === "private") return;
 
     const user = getUser(msg.from);
+
+    const fileId = msg.photo[msg.photo.length - 1].file_id;
 
     let numero = null;
 
@@ -125,14 +155,59 @@ bot.on('photo', (msg) => {
         return;
     }
 
-    numeros[numero].estado = "pagado";
+    numeros[numero].estado = "pendiente";
 
     actualizarTablero();
 
-    bot.sendMessage(tableroChatId,
+    bot.sendMessage(msg.chat.id,
 `💰 Pago recibido
 👤 ${user}
 🎱 Número: ${numero}
-⛔️ En revisión`
+⏳ En espera de confirmación`
     );
+
+    // 📥 ENVIAR AL ADMIN
+    bot.sendPhoto(ADMIN_ID, fileId, {
+        caption: `📥 PAGO PENDIENTE\n👤 ${user}\n🎱 Número: ${numero}`,
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: "✅ APROBAR", callback_data: `ok_${numero}` },
+                    { text: "❌ RECHAZAR", callback_data: `no_${numero}` }
+                ]
+            ]
+        }
+    });
+});
+
+// 🔥 ADMIN APRUEBA / RECHAZA
+bot.on('callback_query', (query) => {
+
+    const data = query.data;
+    const userId = query.from.id;
+
+    if (userId !== ADMIN_ID) {
+        bot.answerCallbackQuery(query.id, {
+            text: "⛔ No autorizado"
+        });
+        return;
+    }
+
+    const num = parseInt(data.split("_")[1]);
+
+    if (!numeros[num]) return;
+
+    if (data.startsWith("ok_")) {
+        numeros[num].estado = "pagado";
+    }
+
+    if (data.startsWith("no_")) {
+        delete numeros[num];
+    }
+
+    actualizarTablero();
+
+    bot.answerCallbackQuery(query.id, {
+        text: "✔ actualizado"
+    });
 });
