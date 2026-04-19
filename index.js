@@ -98,10 +98,10 @@ function actualizarTablero() {
     ).catch(() => {});
 }
 
-// 🔁 REFRESH
+// 🔁 REFRESH AUTOMÁTICO
 setInterval(actualizarTablero, 5000);
 
-// 🎰 INICIO
+// 🎰 INICIO TABLERO
 bot.onText(/\/bingo/, async (msg) => {
 
     tableroChatId = msg.chat.id;
@@ -118,7 +118,7 @@ bot.onText(/\/bingo/, async (msg) => {
     tableroMessageId = sent.message_id;
 });
 
-// ⏱️ TIMER
+// ⏱️ TIMER 5 MIN
 function iniciarTimer(num) {
 
     startTimes[num] = Date.now();
@@ -140,13 +140,13 @@ function iniciarTimer(num) {
 👤 ${user}
 🔢 ${num}
 
-🟢 Disponible de nuevo`);
+🟢 Disponible nuevamente`);
         }
 
     }, 300000);
 }
 
-// 🎯 CALLBACK PRINCIPAL
+// 🎯 TOMAR NÚMERO + CALLBACK
 bot.on('callback_query', async (query) => {
 
     const data = query.data;
@@ -182,18 +182,14 @@ bot.on('callback_query', async (query) => {
 💰 DEBES REALIZAR PAGO A NEQUI
 📸 ENVÍA LA CAPTURA AL GRUPO
 
-⏱️ 5 MINUTOS PARA PAGAR
-❌ SI NO PAGAS SE LIBERA`);
+⏱️ 5 MIN PARA PAGAR`);
 
         bot.answerCallbackQuery(query.id);
         return;
     }
 
-    // 🔒 ADMIN ONLY
-    if (query.from.id !== ADMIN_ID) {
-        bot.answerCallbackQuery(query.id, { text: "⛔ No autorizado" });
-        return;
-    }
+    // 🔒 SOLO ADMIN
+    if (query.from.id !== ADMIN_ID) return;
 
     const num = parseInt(data.split("_")[1]);
     if (!numeros[num]) return;
@@ -204,6 +200,7 @@ bot.on('callback_query', async (query) => {
     if (data.startsWith("no_")) {
 
         delete numeros[num];
+
         actualizarTablero();
 
         bot.sendMessage(tableroChatId,
