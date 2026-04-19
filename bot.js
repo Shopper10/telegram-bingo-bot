@@ -15,7 +15,7 @@ function getUser(user) {
     return user.username ? `@${user.username}` : user.first_name;
 }
 
-// 🎱 TABLERO 1–15
+// 🟢 TABLERO 1–15
 function generarTablero() {
     let keyboard = [];
 
@@ -23,7 +23,7 @@ function generarTablero() {
 
         const item = numeros[i];
 
-        let texto = `${i} 🎱 Disponible`;
+        let texto = `${i} 🟢 Disponible`;
 
         if (item) {
 
@@ -35,6 +35,10 @@ function generarTablero() {
 
             if (item.estado === "pagado") {
                 texto = `${i} ✅ ${u} pagado`;
+            }
+
+            if (item.estado === "pendiente") {
+                texto = `${i} ⏳ ${u} pendiente`;
             }
         }
 
@@ -61,7 +65,7 @@ function actualizarTablero() {
     ).catch(() => {});
 }
 
-// ⏳ BLOQUEO AUTOMÁTICO (5 MIN)
+// ⏳ BLOQUEO AUTOMÁTICO
 function bloqueoAutomatico(num, tiempo = 300000) {
 
     setTimeout(() => {
@@ -118,7 +122,6 @@ bot.on('callback_query', (query) => {
     };
 
     actualizarTablero();
-
     bloqueoAutomatico(num);
 
     bot.answerCallbackQuery(query.id, {
@@ -132,7 +135,7 @@ bot.on('callback_query', (query) => {
     );
 });
 
-// 📸 FOTO EN GRUPO → ENVÍA AL ADMIN
+// 📸 FOTO → ADMIN
 bot.on('photo', (msg) => {
 
     if (msg.chat.type === "private") return;
@@ -166,7 +169,7 @@ bot.on('photo', (msg) => {
 ⏳ En espera de confirmación`
     );
 
-    // 📥 ENVIAR AL ADMIN
+    // 📥 ENVIAR AL ADMIN CON BOTONES (RESTAURADO)
     bot.sendPhoto(ADMIN_ID, fileId, {
         caption: `📥 PAGO PENDIENTE\n👤 ${user}\n🎱 Número: ${numero}`,
         reply_markup: {
