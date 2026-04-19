@@ -320,4 +320,23 @@ if (todosVendidos()) {
 📺 PREPÁRENSE PARA EL BINGO EN CASA
 
 🔥 NO SE PERMITEN MÁS JUEGOS`);
+function forzarRefresco() {
+
+    if (!tableroChatId) return;
+
+    bot.sendMessage(tableroChatId,
+`🔄 REFRESCANDO TABLERO...`, {
+        reply_markup: {
+            inline_keyboard: generarTablero()
+        }
+    }).then(msg => {
+        tableroMessageId = msg.message_id;
+    });
 }
+}
+bot.onText(/\/refresh/, (msg) => {
+
+    if (msg.from.id !== ADMIN_ID) return;
+
+    forzarRefresco();
+});
