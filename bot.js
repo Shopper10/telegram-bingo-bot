@@ -3,60 +3,44 @@ const TelegramBot = require('node-telegram-bot-api');
 const token = process.env.TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
-// 📦 Base de datos en memoria
+// 📦 memoria
 let numeros = {};
-let bloqueando = {}; // anti doble click
 
-const TIEMPO_RESERVA = 5 * 60 * 1000;
-
-// ==========================
 // 🎮 START
-// ==========================
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, "🎱 Bingo PRO activo\nUsa /bingo para ver el tablero");
+    bot.sendMessage(msg.chat.id, "🎱 Bingo activo\nUsa /bingo para ver el tablero");
 });
 
-// ==========================
-// 🎱 TABLERO 5x3
-// ==========================
+// 🎱 TABLERO (FORMATO QUE QUIERES)
 function generarTablero() {
     let keyboard = [];
-    let fila = [];
 
     for (let i = 1; i <= 15; i++) {
 
         let texto = `🟢 ${i}`;
 
         if (numeros[i]) {
-            let u = numeros[i].user;
+            let user = numeros[i].user;
 
             if (numeros[i].estado === "reservado") {
-                texto = `🟡 ${i} ${u}`;
+                texto = `🟡 ${i} ${user} (pendiente)`;
             }
 
             if (numeros[i].estado === "pagado") {
-                texto = `🔴 ${i} ${u}`;
+                texto = `🔴 ${i} ${user} (pagado)`;
             }
         }
 
-        fila.push({
+        keyboard.push([{
             text: texto,
             callback_data: `num_${i}`
-        });
-
-        // 🔥 5 columnas por fila (5x3)
-        if (fila.length === 5) {
-            keyboard.push(fila);
-            fila = [];
-        }
+        }]);
     }
 
     return keyboard;
 }
 
-// ==========================
-// 🎱 MOSTRAR BINGO
-// ==========================
+// 🎱 MOSTRAR TABLERO
 bot.onText(/\/bingo/, (msg) => {
     bot.sendMessage(msg.chat.id, "🎱 TABLERO BINGO:", {
         reply_markup: {
@@ -65,13 +49,10 @@ bot.onText(/\/bingo/, (msg) => {
     });
 });
 
-// ==========================
-// 🎯 CLICK NÚMERO
-// ==========================
+// 🎯 CLICK EN NÚMERO
 bot.on('callback_query', (query) => {
 
     const chatId = query.message.chat.id;
-    const messageId = query.message.message_id;
 
     const user = query.from.username
         ? `@${query.from.username}`
@@ -79,19 +60,8 @@ bot.on('callback_query', (query) => {
 
     const num = parseInt(query.data.split("_")[1]);
 
-    // 🛑 ANTI DOBLE CLICK
-    if (bloqueando[num]) {
-        bot.answerCallbackQuery(query.id, {
-            text: "⏳ Procesando..."
-        });
-        return;
-    }
-
-    bloqueando[num] = true;
-
     // ❌ ocupado
     if (numeros[num]) {
-        bloqueando[num] = false;
         bot.answerCallbackQuery(query.id, {
             text: "❌ No disponible"
         });
@@ -104,41 +74,29 @@ bot.on('callback_query', (query) => {
         estado: "reservado"
     };
 
-    // ⏱ auto liberación
-    setTimeout(() => {
-        if (numeros[num] && numeros[num].estado === "reservado") {
-            delete numeros[num];
-            bot.sendMessage(chatId, `⏱ Número ${num} liberado por no pago`);
-        }
-    }, TIEMPO_RESERVA);
-
     bot.answerCallbackQuery(query.id, {
         text: `🟡 Reservaste ${num}`
     });
 
-    // ⚡ actualizar tablero (animación real)
-    bot.editMessageReplyMarkup(
-        { inline_keyboard: generarTablero() },
-        {
-            chat_id: chatId,
-            message_id: messageId
+    // ⚡ IMPORTANTE: enviamos nuevo tablero (más estable)
+    bot.sendMessage(chatId, "🎱 TABLERO ACTUALIZADO:", {
+        reply_markup: {
+            inline_keyboard: generarTablero()
         }
-    ).catch(() => {});
+    });
 
-    bot.sendMessage(chatId, `🟡 ${user} reservó el número ${num}`);
-
-    bloqueando[num] = false;
+    bot.sendMessage(chatId,
+        `🟡 ${user} reservó el número ${num}`
+    );
 });
 
-// ==========================
-// 💰 MARCAR PAGO (MANUAL)
-// ==========================
+// 💰 PAGO (ADMIN)
 bot.onText(/\/pagar (\d+)/, (msg, match) => {
 
     const num = parseInt(match[1]);
 
     if (!numeros[num]) {
-        bot.sendMessage(msg.chat.id, "❌ No existe");
+        bot.sendMessage(msg.chat.id, "❌ No existe ese número");
         return;
     }
 
@@ -147,11 +105,16 @@ bot.onText(/\/pagar (\d+)/, (msg, match) => {
     bot.sendMessage(msg.chat.id,
         `🔴 Número ${num} PAGADO por ${numeros[num].user}`
     );
+
+    // 🔄 actualizar tablero
+    bot.sendMessage(msg.chat.id, "🎱 TABLERO ACTUALIZADO:", {
+        reply_markup: {
+            inline_keyboard: generarTablero()
+        }
+    });
 });
 
-// ==========================
 // 🔄 RESET
-// ==========================
 bot.onText(/\/reset/, (msg) => {
     numeros = {};
     bot.sendMessage(msg.chat.id, "🔄 Bingo reiniciado");
