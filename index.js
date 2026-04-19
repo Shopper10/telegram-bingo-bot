@@ -195,8 +195,10 @@ bot.on('callback_query', async (query) => {
 👤 ${user}
 🔢 ${num}
 
-💰 PAGA A NEQUI
-📸 ENVÍA CAPTURA
+💰 PAGA Al NEQUI
+3123902322 
+CARLOS MARTINEZ 
+📸 ENVÍA CAPTURA DE PAGO AL GRUPO
 
 ⏱️ 10MINUTOS`);
 
