@@ -183,8 +183,11 @@ bot.on('callback_query', async (query) => {
 👤 ${user}
 🔢 ${num}
 
-⏱️ 5 minutos para pagar`);
+💰 DEBES REALIZAR PAGO A NEQUI
+📸 ENVÍA LA CAPTURA DE PANTALLA AQUÍ AL GRUPO
 
+⏱️ TIENES 5 MINUTOS PARA PAGAR
+❌ SI NO PAGAS, EL NÚMERO QUEDARÁ DISPONIBLE NUEVAMENTE`);
             bot.answerCallbackQuery(query.id);
             return;
         }
