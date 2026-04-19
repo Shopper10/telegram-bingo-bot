@@ -1,21 +1,18 @@
 const TelegramBot = require('node-telegram-bot-api');
 
 const token = process.env.TOKEN;
-
 const bot = new TelegramBot(token, { polling: true });
 
+// 📦 Estado global
 let numerosReservados = {};
 
+// 🎮 /start
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(
-        msg.chat.id,
-        "🎱 Bienvenido al Bingo\n\nUsa /numeros para elegir tu número del 1 al 15"
-    );
+    bot.sendMessage(msg.chat.id, "🎱 Bingo activo\nUsa /numeros");
 });
 
-bot.onText(/\/numeros/, (msg) => {
-    const chatId = msg.chat.id;
-
+// 🔄 Generar teclado dinámico
+function generarTeclado() {
     let keyboard = [];
 
     for (let i = 1; i <= 15; i++) {
@@ -27,49 +24,63 @@ bot.onText(/\/numeros/, (msg) => {
         }]);
     }
 
-    bot.sendMessage(chatId, "🎱 Elige tu número:", {
+    return keyboard;
+}
+
+// 🎱 Mostrar números
+bot.onText(/\/numeros/, (msg) => {
+    bot.sendMessage(msg.chat.id, "🎱 Elige tu número:", {
         reply_markup: {
-            inline_keyboard: keyboard
+            inline_keyboard: generarTeclado()
         }
     });
 });
 
+// 🎯 Click en número
 bot.on('callback_query', (query) => {
     const chatId = query.message.chat.id;
+    const messageId = query.message.message_id;
 
     const user = query.from.username
         ? `@${query.from.username}`
         : query.from.first_name;
 
-    const data = query.data;
+    const num = query.data.split("_")[1];
 
-    if (!data.startsWith("num_")) {
-        bot.answerCallbackQuery(query.id);
-        return;
-    }
-
-    const num = data.split("_")[1];
-
+    // ❌ Ya ocupado
     if (numerosReservados[num]) {
         bot.answerCallbackQuery(query.id, {
-            text: `❌ El número ${num} ya está ocupado`
+            text: "❌ Ya está ocupado"
         });
         return;
     }
 
+    // ✔ Reservar
     numerosReservados[num] = {
-        user: user,
-        status: "reservado"
+        user: user
     };
 
     bot.answerCallbackQuery(query.id, {
-        text: `✔ Número ${num} reservado`
+        text: `✔ Tomaste el ${num}`
     });
 
-    bot.sendMessage(chatId, `🎟 ${user} reservó el número ${num}`);
+    // 🔄 ACTUALIZAR BOTONES EN VIVO
+    bot.editMessageReplyMarkup(
+        {
+            inline_keyboard: generarTeclado()
+        },
+        {
+            chat_id: chatId,
+            message_id: messageId
+        }
+    );
+
+    // 📢 Aviso en grupo
+    bot.sendMessage(chatId, `🎟 ${user} tomó el número ${num}`);
 });
 
+// 🔄 Reset
 bot.onText(/\/reset/, (msg) => {
     numerosReservados = {};
-    bot.sendMessage(msg.chat.id, "🔄 Bingo reiniciado");
+    bot.sendMessage(msg.chat.id, "🔄 Reiniciado");
 });
