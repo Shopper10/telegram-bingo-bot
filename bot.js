@@ -13,26 +13,26 @@ function getUser(user) {
     return user.username ? `@${user.username}` : user.first_name;
 }
 
-// 🎱 TABLERO
+// 🎱 TABLERO FIJO 1–15
 function generarTablero() {
     let keyboard = [];
 
     for (let i = 1; i <= 15; i++) {
 
-        let texto = `🟢 ${i}`;
-
         const item = numeros[i];
+
+        let texto = `🎱 ${i} Disponible`;
 
         if (item) {
 
             const u = item.user;
 
             if (item.estado === "reservado") {
-                texto = `🟡 ${i} ${u} ⏳`;
+                texto = `${i} ⛔️ ${u} pendiente`;
             }
 
             if (item.estado === "pagado") {
-                texto = `🔴 ${i} ${u} ✅`;
+                texto = `${i} ✅ ${u} pagado`;
             }
         }
 
@@ -59,36 +59,8 @@ function actualizarTablero() {
     ).catch(() => {});
 }
 
-// 🎬 ANIMACIÓN SIMPLE (SIMULADA)
-function animarTablero(chatId) {
-
-    let pasos = [
-        "🎱 Preparando bingo...",
-        "🎲 Mezclando números...",
-        "🎯 Listo!"
-    ];
-
-    let i = 0;
-
-    let interval = setInterval(() => {
-
-        bot.editMessageText(pasos[i], {
-            chat_id: chatId,
-            message_id: tableroMessageId
-        }).catch(() => {});
-
-        i++;
-
-        if (i >= pasos.length) {
-            clearInterval(interval);
-            actualizarTablero();
-        }
-
-    }, 700);
-}
-
-// ⛔ BLOQUEO AUTOMÁTICO
-function bloquearAutomatico(num, tiempo = 300000) { // 5 min
+// ⏳ BLOQUEO AUTOMÁTICO (5 min)
+function bloqueoAutomatico(num, tiempo = 300000) {
 
     setTimeout(() => {
 
@@ -99,16 +71,44 @@ function bloquearAutomatico(num, tiempo = 300000) { // 5 min
             actualizarTablero();
 
             bot.sendMessage(tableroChatId,
-                `⛔ Número ${num} liberado por no pago`
+                `⛔️ Número ${num} liberado por falta de pago`
             );
         }
 
     }, tiempo);
 }
 
+// 🎉 SORTEO GANADOR
+function sortearGanador(chatId) {
+
+    let pagados = [];
+
+    for (let n in numeros) {
+        if (numeros[n].estado === "pagado") {
+            pagados.push(n);
+        }
+    }
+
+    if (pagados.length === 0) {
+        bot.sendMessage(chatId, "❌ No hay números pagados para sortear");
+        return;
+    }
+
+    let ganador = pagados[Math.floor(Math.random() * pagados.length)];
+
+    bot.sendMessage(chatId,
+`🎉 GANADOR DEL BINGO 🎉
+
+🎱 Número: ${ganador}
+👤 ${numeros[ganador].user}
+
+🏆 ¡Felicidades!`
+    );
+}
+
 // 🎮 START
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, "🎱 Bingo activo\nUsa /bingo para iniciar tablero");
+    bot.sendMessage(msg.chat.id, "🎱 Bingo activo\nUsa /bingo para iniciar");
 });
 
 // 🎱 CREAR TABLERO
@@ -144,8 +144,7 @@ bot.on('callback_query', (query) => {
     };
 
     actualizarTablero();
-
-    bloquearAutomatico(num); // ⏳ activa tiempo límite
+    bloqueoAutomatico(num); // ⏳ tiempo límite
 
     bot.answerCallbackQuery(query.id, {
         text: "✔ reservado"
@@ -181,14 +180,17 @@ bot.on('photo', (msg) => {
         return;
     }
 
-    numeros[numero].estado = "reservado"; // sigue pendiente hasta aprobación
+    numeros[numero].estado = "pendiente";
 
     actualizarTablero();
 
-    // 🎬 pequeña “animación visual”
-    animarTablero(tableroChatId);
-
     bot.sendPhoto(msg.chat.id, fileId, {
-        caption: `💰 Pago recibido\n👤 ${user}\n🎱 Número: ${numero}\n⏳ Esperando confirmación`
+        caption: `💰 Pago recibido\n👤 ${user}\n🎱 Número: ${numero}\n⏳ En revisión`
     });
+});
+
+// 🎯 COMANDO SORTEO
+bot.onText(/\/sorteo/, (msg) => {
+
+    sortearGanador(msg.chat.id);
 });
