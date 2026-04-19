@@ -4,8 +4,8 @@ const token = process.env.TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
 // ⚙️ CONFIG
-const ADMIN_ID = 1448948861; // 👈 CAMBIAR
-const NEQUI_NUMERO = "3123902322";
+const ADMIN_ID = 123456789; // 👈 CAMBIAR
+const NEQUI_NUMERO = "3001234567";
 const NEQUI_NOMBRE = "Carlos";
 
 // 📦 DATA
@@ -47,7 +47,7 @@ function generarTablero() {
     return keyboard;
 }
 
-// 🔄 ACTUALIZAR TABLERO (CLAVE)
+// 🔄 ACTUALIZAR TABLERO
 function actualizarTablero() {
 
     if (!tableroChatId || !tableroMessageId) return;
@@ -66,12 +66,12 @@ bot.onText(/\/start/, (msg) => {
     bot.sendMessage(msg.chat.id, "🎱 Bingo activo\nUsa /bingo para ver tablero");
 });
 
-// 🎱 CREAR TABLERO (1 SOLO MENSAJE)
+// 🎱 CREAR TABLERO (UNO SOLO)
 bot.onText(/\/bingo/, async (msg) => {
 
     tableroChatId = msg.chat.id;
 
-    const sent = await bot.sendMessage(msg.chat.id, "🎱 TABLERO BINGO (EN VIVO):", {
+    const sent = await bot.sendMessage(msg.chat.id, "🎱 TABLERO BINGO EN VIVO:", {
         reply_markup: {
             inline_keyboard: generarTablero()
         }
@@ -176,7 +176,7 @@ bot.on('photo', (msg) => {
         return;
     }
 
-    // 📩 enviar al admin
+    // 📩 ENVIAR AL ADMIN CON BOTONES
     bot.sendPhoto(ADMIN_ID, fileId, {
         caption: `💰 COMPROBANTE\n👤 ${user}\n🎱 Número: ${numero}`,
         reply_markup: {
