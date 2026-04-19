@@ -6,11 +6,11 @@ const ADMIN_ID = Number(process.env.ADMIN_ID);
 
 const bot = new TelegramBot(token, { polling: true });
 
-// 📦 DATA
+// 📦 ARCHIVO PERSISTENTE
 const DATA_FILE = "./data.json";
 
 // =====================
-// ESTADO
+// ESTADO GLOBAL
 // =====================
 let numeros = {};
 let tableroChatId = null;
@@ -54,7 +54,7 @@ function getUser(user) {
 }
 
 // =====================
-// TABLERO
+// TABLERO (CON USUARIO AL LADO)
 // =====================
 function generarTablero() {
 
@@ -75,7 +75,7 @@ function generarTablero() {
             }
 
             if (item.estado === "pendiente") {
-                texto = `⏱️ ${i} - ${u} - ESPERA PAGO`;
+                texto = `⏱️ ${i} - ${u} - ESPERANDO PAGO`;
             }
 
             if (item.estado === "pagado") {
@@ -109,7 +109,7 @@ function actualizarTablero() {
 }
 
 // =====================
-// TIMER 10 MIN
+// TIMER 10 MIN (LIBERA AUTOMÁTICO)
 // =====================
 function iniciarTimer(num) {
 
@@ -121,13 +121,13 @@ function iniciarTimer(num) {
 
         const item = numeros[num];
 
-        if (!item || item.estado !== "reservado") return;
+        if (!item || item.estado === "pagado") return;
 
         const user = item.user.name;
 
         delete numeros[num];
-        delete startTimes[num];
         delete timers[num];
+        delete startTimes[num];
 
         guardarDatos();
         actualizarTablero();
@@ -142,7 +142,7 @@ function iniciarTimer(num) {
 }
 
 // =====================
-// INICIO TABLERO
+// INICIAR BINGO
 // =====================
 bot.onText(/\/bingo/, async (msg) => {
 
@@ -161,13 +161,14 @@ bot.onText(/\/bingo/, async (msg) => {
 });
 
 // =====================
-// CALLBACKS
+// CALLBACKS (TOMA NÚMERO + ADMIN)
 // =====================
 bot.on('callback_query', (query) => {
 
     const data = query.data;
+    const user = getUser(query.from);
 
-    // TOMAR NÚMERO
+    // 🎯 TOMAR NÚMERO
     if (data.startsWith("num_")) {
 
         const num = parseInt(data.split("_")[1]);
@@ -177,7 +178,7 @@ bot.on('callback_query', (query) => {
         numeros[num] = {
             user: {
                 id: query.from.id,
-                name: getUser(query.from)
+                name: user
             },
             estado: "reservado"
         };
@@ -191,18 +192,18 @@ bot.on('callback_query', (query) => {
 `🎯 NÚMERO TOMADO
 
 🔢 ${num}
-👤 ${numeros[num].user.name}
+👤 ${user}
 
-💰 PAGO NEQUI: 3123902322
+💰 PAGA A NEQUI: 3123902322
 📸 Envía comprobante en el grupo
-⏱ 10 minutos para pagar`);
-
+⏱ 10 minutos o se libera`);
         return;
     }
 
+    // 🔒 SOLO ADMIN
     if (query.from.id !== ADMIN_ID) return;
 
-    // APROBAR
+    // ✅ APROBAR
     if (data.startsWith("ok_")) {
 
         const nums = data.split("_")[1].split("-");
@@ -211,8 +212,8 @@ bot.on('callback_query', (query) => {
 
             if (numeros[n]) {
                 numeros[n].estado = "pagado";
-                if (timers[n]) clearTimeout(timers[n]);
                 totalDinero += 3000;
+                if (timers[n]) clearTimeout(timers[n]);
             }
         });
 
@@ -225,7 +226,7 @@ bot.on('callback_query', (query) => {
 🔢 ${nums.join(", ")}`);
     }
 
-    // RECHAZAR
+    // ❌ RECHAZAR
     if (data.startsWith("no_")) {
 
         const nums = data.split("_")[1].split("-");
@@ -239,14 +240,18 @@ bot.on('callback_query', (query) => {
         actualizarTablero();
 
         bot.sendMessage(tableroChatId,
-`❌ PAGOS RECHAZADOS`);
+`❌ PAGOS RECHAZADOS
+
+🔢 ${nums.join(", ")} liberados`);
     }
 });
 
 // =====================
-// FOTO PAGO
+// 📸 FOTO (SOLO ADMIN DECIDE)
 // =====================
-bot.on('photo', (msg) => {
+bot.on('message', (msg) => {
+
+    if (!msg.photo) return;
 
     const userId = msg.from.id;
     const fileId = msg.photo[msg.photo.length - 1].file_id;
@@ -260,7 +265,10 @@ bot.on('photo', (msg) => {
         }
     }
 
-    if (!nums.length) return;
+    if (!nums.length) {
+        bot.sendMessage(msg.chat.id, "❌ No tienes números activos");
+        return;
+    }
 
     nums.forEach(n => {
         numeros[n].estado = "pendiente";
@@ -272,12 +280,12 @@ bot.on('photo', (msg) => {
 
     bot.sendPhoto(tableroChatId, fileId, {
         caption:
-`📥 PAGO RECIBIDO
+`📥 COMPROBANTE RECIBIDO
 
 👤 ${getUser(msg.from)}
 🔢 ${nums.join(", ")}
 
-⚠️ ADMIN: aprobar o rechazar`,
+⚠️ SOLO ADMIN PUEDE APROBAR`,
         reply_markup: {
             inline_keyboard: [
                 [
