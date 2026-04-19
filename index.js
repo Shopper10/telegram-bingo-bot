@@ -5,7 +5,7 @@ const ADMIN_ID = Number(process.env.ADMIN_ID);
 
 const bot = new TelegramBot(token, { polling: true });
 
-// 📦 ESTADO
+// 📦 ESTADO GLOBAL
 let numeros = {};
 let tableroChatId = null;
 let tableroMessageId = null;
@@ -15,7 +15,7 @@ let timers = {};
 let startTimes = {};
 let alertados = {};
 
-// 👤 USER
+// 👤 USER NAME
 function getUser(user) {
     return user.username ? `@${user.username}` : user.first_name;
 }
@@ -50,7 +50,7 @@ function generarTablero() {
                     let restante = 600000 - (Date.now() - startTimes[i]);
                     tiempo = ` ${formatTiempo(restante)}`;
 
-                    if (restante <= 600000 && !alertados[i]) {
+                    if (restante <= 30000 && !alertados[i]) {
                         alertados[i] = true;
 
                         bot.sendMessage(tableroChatId,
@@ -83,7 +83,7 @@ function generarTablero() {
     return keyboard;
 }
 
-// 🔄 SOLO ACTUALIZA BOTONES
+// 🔄 ACTUALIZAR TABLERO
 function actualizarTablero() {
 
     if (!tableroChatId || !tableroMessageId) return;
@@ -94,10 +94,10 @@ function actualizarTablero() {
             chat_id: tableroChatId,
             message_id: tableroMessageId
         }
-    ).catch(() => {});
+    ).catch(err => console.log("update error:", err.message));
 }
 
-// 📢 RE-POST SEGURO (FIX REAL)
+// 📢 REPOST TABLERO
 function reenviarTablero() {
 
     if (!tableroChatId) return;
@@ -114,16 +114,16 @@ function reenviarTablero() {
     });
 }
 
-// 🔁 REFRESH
+// 🔁 LOOP
 setInterval(actualizarTablero, 5000);
 
-// 🎰 INICIO
+// 🎰 INICIO TABLERO
 bot.onText(/\/bingo/, async (msg) => {
 
     tableroChatId = msg.chat.id;
 
     const sent = await bot.sendMessage(msg.chat.id,
-`🎰 CASINO BINGO EN VIVO
+`🎰 BINGO EN VIVO
 
 💰 Total: $${totalDinero}`, {
         reply_markup: {
@@ -134,7 +134,7 @@ bot.onText(/\/bingo/, async (msg) => {
     tableroMessageId = sent.message_id;
 });
 
-// ⏱️ TIMER
+// ⏱️ TIMER 10 MIN
 function iniciarTimer(num) {
 
     startTimes[num] = Date.now();
@@ -162,7 +162,7 @@ function iniciarTimer(num) {
     }, 600000);
 }
 
-// 🎯 CALLBACK
+// 🎯 CALLBACKS
 bot.on('callback_query', async (query) => {
 
     const data = query.data;
@@ -195,45 +195,86 @@ bot.on('callback_query', async (query) => {
 👤 ${user}
 🔢 ${num}
 
-💰 PAGA Al NEQUI
-3123902322 
-CARLOS MARTINEZ 
-📸 ENVÍA CAPTURA DE PAGO AL GRUPO
-
-⏱️ 10MINUTOS`);
+💰 PAGA Y ENVÍA CAPTURA`);
 
         bot.answerCallbackQuery(query.id);
         return;
     }
 
-    // 🔒 ADMIN
+    // 🔒 ADMIN ONLY
     if (query.from.id !== ADMIN_ID) return;
 
     const num = parseInt(data.split("_")[1]);
-    if (!numeros[num]) return;
+    if (!numeros[num] && !data.includes("all")) return;
 
-    const name = numeros[num].user.name;
+    // ❌ RECHAZAR TODO
+    if (data.startsWith("no_all_")) {
 
-    // ❌ RECHAZAR
-    if (data.startsWith("no_")) {
+        const nums = data.replace("no_all_", "").split("-");
 
-        delete numeros[num];
+        nums.forEach(n => delete numeros[n]);
+
         actualizarTablero();
+        reenviarTablero();
 
         bot.sendMessage(tableroChatId,
-`❌ RECHAZADO
+`❌ PAGO RECHAZADO
 
-👤 ${name}
-🔢 ${num}`);
-
-        setTimeout(() => {
-            reenviarTablero();
-        }, 800);
+🔢 ${nums.join(", ")}`);
 
         return;
     }
 
-    // ✅ APROBAR
+    // ✅ APROBAR TODO
+    if (data.startsWith("ok_all_")) {
+
+        const nums = data.replace("ok_all_", "").split("-");
+
+        nums.forEach(n => {
+            if (numeros[n]) {
+                numeros[n].estado = "pagado";
+                totalDinero += 3000;
+            }
+        });
+
+        actualizarTablero();
+
+        bot.sendMessage(tableroChatId,
+`⏳ VERIFICANDO PAGO...`);
+
+        setTimeout(() => {
+
+            bot.sendMessage(tableroChatId,
+`✅ PAGO CONFIRMADO
+
+👤 ${numeros[nums[0]].user.name}
+🔢 ${nums.join(", ")}
+💰 TOTAL: $${nums.length * 3000}`);
+
+            reenviarTablero();
+
+        }, 1500);
+
+        return;
+    }
+
+    // ❌ RECHAZAR INDIVIDUAL
+    if (data.startsWith("no_")) {
+
+        delete numeros[num];
+
+        actualizarTablero();
+        reenviarTablero();
+
+        bot.sendMessage(tableroChatId,
+`❌ RECHAZADO
+
+🔢 ${num}`);
+
+        return;
+    }
+
+    // ✅ APROBAR INDIVIDUAL
     if (data.startsWith("ok_")) {
 
         numeros[num].estado = "pagado";
@@ -249,7 +290,7 @@ CARLOS MARTINEZ
             bot.sendMessage(tableroChatId,
 `✅ PAGO CONFIRMADO
 
-👤 ${name}
+👤 ${numeros[num].user.name}
 🔢 ${num}
 💰 +$3.000`);
 
@@ -259,31 +300,32 @@ CARLOS MARTINEZ
     }
 });
 
-// 📸 FOTO
+// 📸 FOTO (MULTI PAGO)
 bot.on('photo', (msg) => {
 
     const userId = msg.from.id;
     const fileId = msg.photo[msg.photo.length - 1].file_id;
 
-    let numero = null;
+    let numerosUsuario = [];
 
     for (let n in numeros) {
         if (
             numeros[n].user.id === userId &&
             numeros[n].estado === "reservado"
         ) {
-            numero = n;
-            break;
+            numerosUsuario.push(n);
         }
     }
 
-    if (!numero) {
-        bot.sendMessage(msg.chat.id, "❌ No tienes números reservados");
+    if (numerosUsuario.length === 0) {
+        bot.sendMessage(msg.chat.id, "❌ No tienes números");
         return;
     }
 
-    clearTimeout(timers[numero]);
-    numeros[numero].estado = "pendiente";
+    numerosUsuario.forEach(n => {
+        clearTimeout(timers[n]);
+        numeros[n].estado = "pendiente";
+    });
 
     actualizarTablero();
 
@@ -291,52 +333,17 @@ bot.on('photo', (msg) => {
         caption:
 `📥 PAGO EN REVISIÓN
 
-👤 ${numeros[numero].user.name}
-🔢 ${numero}`,
+👤 ${numeros[numerosUsuario[0]].user.name}
+🔢 ${numerosUsuario.join(", ")}
+💰 TOTAL: $${numerosUsuario.length * 3000}`,
 
         reply_markup: {
             inline_keyboard: [
                 [
-                    { text: "✅ APROBAR", callback_data: `ok_${numero}` },
-                    { text: "❌ RECHAZAR", callback_data: `no_${numero}` }
+                    { text: "✅ APROBAR TODO", callback_data: `ok_all_${numerosUsuario.join("-")}` },
+                    { text: "❌ RECHAZAR TODO", callback_data: `no_all_${numerosUsuario.join("-")}` }
                 ]
             ]
         }
     });
-});
-function todosVendidos() {
-    for (let i = 1; i <= 15; i++) {
-        if (!numeros[i] || numeros[i].estado !== "pagado") {
-            return false;
-        }
-    }
-    return true;
-}
-if (todosVendidos()) {
-    bot.sendMessage(tableroChatId,
-`🎉 TODOS LOS NÚMEROS VENDIDOS 🎉
-
-🎰 INICIAMOS LA PARTIDA EN BREVE
-📺 PREPÁRENSE PARA EL BINGO EN CASA
-
-🔥 NO SE PERMITEN MÁS JUEGOS`);
-function forzarRefresco() {
-
-    if (!tableroChatId) return;
-
-    bot.sendMessage(tableroChatId,
-`🔄 REFRESCANDO TABLERO...`, {
-        reply_markup: {
-            inline_keyboard: generarTablero()
-        }
-    }).then(msg => {
-        tableroMessageId = msg.message_id;
-    });
-}
-}
-bot.onText(/\/refresh/, (msg) => {
-
-    if (msg.from.id !== ADMIN_ID) return;
-
-    forzarRefresco();
 });
