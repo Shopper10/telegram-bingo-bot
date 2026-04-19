@@ -1,15 +1,11 @@
 {
-  "name": "telegram-bingo-bot",
+  "name": "bot",
   "version": "1.0.0",
-  "description": "Bot de bingo automatizado para Telegram con selección de números",
-  "main": "bot.js",
+  "main": "index.js",
   "scripts": {
-    "start": "node bot.js"
+    "start": "node index.js"
   },
   "dependencies": {
-    "node-telegram-bot-api": "^0.64.0"
-  },
-  "engines": {
-    "node": ">=16"
+    "node-telegram-bot-api": "^0.61.0"
   }
 }
