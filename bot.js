@@ -4,8 +4,8 @@ const token = process.env.TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
 // ⚙️ CONFIG
-const ADMIN_ID = 123456789; // 👈 CAMBIAR
-const NEQUI_NUMERO = "3001234567";
+const ADMIN_ID = 1448948861; // 👈 CAMBIAR
+const NEQUI_NUMERO = "3123902322";
 const NEQUI_NOMBRE = "Carlos";
 
 // 📦 memoria
