@@ -8,12 +8,12 @@ let numeros = {};
 let tableroMessageId = null;
 let tableroChatId = null;
 
-// 👤 USER
+// 👤 USERNAME
 function getUser(user) {
     return user.username ? `@${user.username}` : user.first_name;
 }
 
-// 🎱 TABLERO FIJO 1–15
+// 🎱 TABLERO 1–15 (FORMATO EXACTO)
 function generarTablero() {
     let keyboard = [];
 
@@ -59,37 +59,6 @@ function actualizarTablero() {
     ).catch(() => {});
 }
 
-// ⏳ BLOQUEO AUTOMÁTICO (5 min)
-function bloqueoAutomatico(num, tiempo = 300000) {
-
-    setTimeout(() => {
-
-        if (numeros[num] && numeros[num].estado === "reservado") {
-
-            delete numeros[num];
-
-            actualizarTablero();
-
-            bot.sendMessage(tableroChatId,
-                `⛔️ Número ${num} liberado por falta de pago`
-            );
-        }
-
-    }, tiempo);
-}
-
-// 🔔 AVISO DE PAGO
-function avisoPago(user, num) {
-
-    bot.sendMessage(tableroChatId,
-`💰 PAGO RECIBIDO
-
-👤 ${user}
-🎱 Número: ${num}
-⛔️ En revisión`
-    );
-}
-
 // 🎱 CREAR TABLERO
 bot.onText(/\/bingo/, async (msg) => {
 
@@ -123,7 +92,6 @@ bot.on('callback_query', (query) => {
     };
 
     actualizarTablero();
-    bloqueoAutomatico(num);
 
     bot.answerCallbackQuery(query.id, {
         text: "✔ reservado"
@@ -160,5 +128,11 @@ bot.on('photo', (msg) => {
     numeros[numero].estado = "pagado";
 
     actualizarTablero();
-    avisoPago(user, numero);
+
+    bot.sendMessage(tableroChatId,
+`💰 Pago recibido
+👤 ${user}
+🎱 Número: ${numero}
+⛔️ En revisión`
+    );
 });
