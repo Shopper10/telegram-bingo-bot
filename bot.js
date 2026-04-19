@@ -3,21 +3,17 @@ const TelegramBot = require('node-telegram-bot-api');
 const token = process.env.TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
-// ⚙️ CONFIG
-const NEQUI_NUMERO = "3001234567";
-const NEQUI_NOMBRE = "Carlos";
-
 // 📦 DATA
 let numeros = {};
 let tableroMessageId = null;
 let tableroChatId = null;
 
-// 👤 USER
+// 👤 USER FORMAT
 function getUser(user) {
     return user.username ? `@${user.username}` : user.first_name;
 }
 
-// 🎱 TABLERO LIVE
+// 🎱 TABLERO
 function generarTablero() {
     let keyboard = [];
 
@@ -25,19 +21,21 @@ function generarTablero() {
 
         let texto = `🟢 ${i}`;
 
-        if (numeros[i]) {
+        const item = numeros[i];
 
-            let u = numeros[i].user;
+        if (item) {
 
-            if (numeros[i].estado === "reservado") {
+            const u = item.user;
+
+            if (item.estado === "reservado") {
                 texto = `🟡 ${i} ${u}`;
             }
 
-            if (numeros[i].estado === "pendiente") {
-                texto = `🟠 ${i} ${u}`;
+            if (item.estado === "pendiente") {
+                texto = `🟠 ${i} ${u} ⏳`;
             }
 
-            if (numeros[i].estado === "pagado") {
+            if (item.estado === "pagado") {
                 texto = `🔴 ${i} ${u} ✅`;
             }
         }
@@ -67,10 +65,10 @@ function actualizarTablero() {
 
 // 🎮 START
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, "🎱 Bingo activo\nUsa /bingo para ver tablero");
+    bot.sendMessage(msg.chat.id, "🎱 Bingo activo\nUsa /bingo para ver el tablero");
 });
 
-// 🎱 CREAR TABLERO (1 SOLO MENSAJE)
+// 🎱 CREAR TABLERO (UNO SOLO)
 bot.onText(/\/bingo/, async (msg) => {
 
     tableroChatId = msg.chat.id;
@@ -84,7 +82,7 @@ bot.onText(/\/bingo/, async (msg) => {
     tableroMessageId = sent.message_id;
 });
 
-// 🎯 TOMAR NÚMERO
+// 🎯 CALLBACKS (TODO EN GRUPO)
 bot.on('callback_query', (query) => {
 
     const data = query.data;
@@ -92,6 +90,7 @@ bot.on('callback_query', (query) => {
 
     const user = getUser(query.from);
 
+    // 🎱 TOMAR NÚMERO
     if (data.startsWith("num_")) {
 
         const num = parseInt(data.split("_")[1]);
@@ -117,15 +116,11 @@ bot.on('callback_query', (query) => {
         bot.sendMessage(chatId,
 `🟡 ${user} reservaste el número ${num}
 
-💰 Paga a Nequi:
-📱 ${NEQUI_NUMERO}
-👤 ${NEQUI_NOMBRE}
-
-📸 Envía la captura en el grupo`
+💰 Paga y envía comprobante en el grupo`
         );
     }
 
-    // 💰 APROBAR / RECHAZAR EN GRUPO
+    // 💰 APROBAR / RECHAZAR (GRUPO)
     if (data.startsWith("ok_") || data.startsWith("no_")) {
 
         const num = parseInt(data.split("_")[1]);
@@ -149,7 +144,7 @@ bot.on('callback_query', (query) => {
     }
 });
 
-// 📸 FOTO EN GRUPO → BOT MUESTRA BOTONES EN EL MISMO GRUPO
+// 📸 FOTO EN GRUPO → BOTONES EN EL MISMO GRUPO
 bot.on('photo', (msg) => {
 
     const chatId = msg.chat.id;
@@ -178,13 +173,13 @@ bot.on('photo', (msg) => {
 
     actualizarTablero();
 
-    // 📩 MENSAJE EN EL GRUPO (NO PRIVADO)
+    // 📩 MENSAJE EN EL GRUPO (BOTONES AQUÍ MISMO)
     bot.sendPhoto(chatId, fileId, {
-        caption: `💰 PAGO RECIBIDO\n👤 ${user}\n🎱 Número: ${numero}`,
+        caption: `💰 COMPROBANTE\n👤 ${user}\n🎱 Número: ${numero}`,
         reply_markup: {
             inline_keyboard: [
                 [
-                    { text: "✅ PAGADO", callback_data: `ok_${numero}` },
+                    { text: "✅ APROBAR", callback_data: `ok_${numero}` },
                     { text: "❌ RECHAZAR", callback_data: `no_${numero}` }
                 ]
             ]
