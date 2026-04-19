@@ -292,4 +292,4 @@ function verificarLinea(ultimo) {
             return;
         }
     }
-}
+} 
