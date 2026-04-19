@@ -54,12 +54,11 @@ function generarTablero() {
                         alertados[i] = true;
 
                         bot.sendMessage(tableroChatId,
-`⚠️ ÚLTIMOS 30 SEGUNDOS
+`⚠️ ÚLTIMO AVISO
 
 👤 ${u}
 🔢 ${i}
-
-⏳ Apurate o se libera`);
+⏳ 30s restantes`);
                     }
                 }
 
@@ -84,7 +83,7 @@ function generarTablero() {
     return keyboard;
 }
 
-// 🔄 ACTUALIZAR TABLERO
+// 🔄 ACTUALIZAR TABLERO (BOTONES)
 function actualizarTablero() {
 
     if (!tableroChatId || !tableroMessageId) return;
@@ -98,10 +97,23 @@ function actualizarTablero() {
     ).catch(() => {});
 }
 
-// 🔁 REFRESH AUTOMÁTICO
+// 📢 REENVIAR TABLERO (VISUAL CASINO)
+function reenviarTablero() {
+
+    if (!tableroChatId) return;
+
+    bot.sendMessage(tableroChatId,
+`🎰 TABLERO ACTUALIZADO EN VIVO`, {
+        reply_markup: {
+            inline_keyboard: generarTablero()
+        }
+    });
+}
+
+// 🔁 REFRESH
 setInterval(actualizarTablero, 5000);
 
-// 🎰 INICIO TABLERO
+// 🎰 INICIO
 bot.onText(/\/bingo/, async (msg) => {
 
     tableroChatId = msg.chat.id;
@@ -146,7 +158,7 @@ function iniciarTimer(num) {
     }, 300000);
 }
 
-// 🎯 TOMAR NÚMERO + CALLBACK
+// 🎯 CALLBACK PRINCIPAL
 bot.on('callback_query', async (query) => {
 
     const data = query.data;
@@ -179,8 +191,8 @@ bot.on('callback_query', async (query) => {
 👤 ${user}
 🔢 ${num}
 
-💰 DEBES REALIZAR PAGO A NEQUI
-📸 ENVÍA LA CAPTURA AL GRUPO
+💰 DEBES PAGAR A NEQUI
+📸 ENVÍA CAPTURA AL GRUPO
 
 ⏱️ 5 MIN PARA PAGAR`);
 
@@ -188,7 +200,7 @@ bot.on('callback_query', async (query) => {
         return;
     }
 
-    // 🔒 SOLO ADMIN
+    // 🔒 ADMIN ONLY
     if (query.from.id !== ADMIN_ID) return;
 
     const num = parseInt(data.split("_")[1]);
@@ -206,13 +218,15 @@ bot.on('callback_query', async (query) => {
         bot.sendMessage(tableroChatId,
 `❌ RECHAZADO
 
-🔢 ${num}
-👤 ${name}`);
+👤 ${name}
+🔢 ${num}`);
+
+        reenviarTablero();
 
         return;
     }
 
-    // ✅ APROBAR
+    // ✅ APROBAR (MEJORADO)
     if (data.startsWith("ok_")) {
 
         numeros[num].estado = "pagado";
@@ -220,12 +234,25 @@ bot.on('callback_query', async (query) => {
 
         actualizarTablero();
 
+        // 🎰 efecto casino
         bot.sendMessage(tableroChatId,
-`🎰 APROBADO
+`⏳ VERIFICANDO PAGO...
+
+🎰 ${name}
+🔢 ${num}`);
+
+        setTimeout(() => {
+
+            bot.sendMessage(tableroChatId,
+`✅ PAGO CONFIRMADO
 
 👤 ${name}
 🔢 ${num}
 💰 +$3.000`);
+
+            reenviarTablero();
+
+        }, 2000);
     }
 });
 
