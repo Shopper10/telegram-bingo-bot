@@ -1,11 +1,17 @@
 const TelegramBot = require('node-telegram-bot-api');
+const fs = require("fs");
 
 const token = process.env.TOKEN;
 const ADMIN_ID = Number(process.env.ADMIN_ID);
 
 const bot = new TelegramBot(token, { polling: true });
 
-// 📦 ESTADO
+// 📦 ARCHIVO PERSISTENTE
+const DATA_FILE = "./data.json";
+
+// =====================
+// 🔄 ESTADO GLOBAL
+// =====================
 let numeros = {};
 let tableroChatId = null;
 let tableroMessageId = null;
@@ -16,12 +22,41 @@ let startTimes = {};
 let alertados = {};
 let juegoAnunciado = false;
 
+// =====================
+// 💾 GUARDAR / CARGAR
+// =====================
+function cargarDatos() {
+    try {
+        if (fs.existsSync(DATA_FILE)) {
+            const data = JSON.parse(fs.readFileSync(DATA_FILE));
+
+            numeros = data.numeros || {};
+            totalDinero = data.totalDinero || 0;
+
+            console.log("📦 Datos cargados");
+        }
+    } catch (e) {
+        console.log("Error cargando datos", e.message);
+    }
+}
+
+function guardarDatos() {
+    fs.writeFileSync(DATA_FILE, JSON.stringify({
+        numeros,
+        totalDinero
+    }));
+}
+
+// =====================
 // 👤 USER
+// =====================
 function getUser(user) {
     return user.username ? `@${user.username}` : user.first_name;
 }
 
+// =====================
 // ⏱️ TIEMPO
+// =====================
 function formatTiempo(ms) {
     let total = Math.max(0, Math.floor(ms / 1000));
     let min = Math.floor(total / 60);
@@ -29,7 +64,9 @@ function formatTiempo(ms) {
     return `${min}:${sec.toString().padStart(2, '0')}`;
 }
 
+// =====================
 // 🎰 TABLERO
+// =====================
 function generarTablero() {
 
     let keyboard = [];
@@ -44,23 +81,15 @@ function generarTablero() {
             const u = item.user.name;
 
             if (item.estado === "reservado") {
-
-                let tiempo = "";
-
-                if (startTimes[i]) {
-                    let restante = 600000 - (Date.now() - startTimes[i]);
-                    tiempo = ` ${formatTiempo(restante)}`;
-                }
-
-                texto = `⛔️ ${i} - ${u}${tiempo}`;
+                texto = `⛔️ ${i} - ${u}`;
             }
 
             if (item.estado === "pendiente") {
-                texto = `⏱️ ${i} - ${u} PENDIENTE`;
+                texto = `⏱️ ${i} - ${u}`;
             }
 
             if (item.estado === "pagado") {
-                texto = `✅ ${i} - ${u} PAGADO`;
+                texto = `✅ ${i} - ${u}`;
             }
         }
 
@@ -73,7 +102,9 @@ function generarTablero() {
     return keyboard;
 }
 
-// 🔄 UPDATE TABLERO
+// =====================
+// 🔄 ACTUALIZAR TABLERO
+// =====================
 function actualizarTablero() {
 
     if (!tableroChatId || !tableroMessageId) return;
@@ -87,7 +118,9 @@ function actualizarTablero() {
     ).catch(() => {});
 }
 
+// =====================
 // 📢 REPOST TABLERO
+// =====================
 function reenviarTablero() {
 
     if (!tableroChatId) return;
@@ -104,7 +137,9 @@ function reenviarTablero() {
     });
 }
 
-// 🧠 VERIFICAR SI ESTÁ COMPLETO
+// =====================
+// 🧠 JUEGO COMPLETO
+// =====================
 function juegoCompleto() {
 
     for (let i = 1; i <= 15; i++) {
@@ -112,11 +147,9 @@ function juegoCompleto() {
             return false;
         }
     }
-
     return true;
 }
 
-// 🚀 AVISO DE JUEGO LLENO
 function verificarJuegoLleno() {
 
     if (juegoAnunciado) return;
@@ -126,23 +159,28 @@ function verificarJuegoLleno() {
         juegoAnunciado = true;
 
         bot.sendMessage(tableroChatId,
-`🎉 ¡TODOS LOS NÚMEROS VENDIDOS! 🎉
+`🎉 TODOS LOS NÚMEROS VENDIDOS 🎉
 
-🎰 LA PARTIDA VA A INICIAR
-📢 PREPÁRATE PARA EL BINGO EN VIVO`);
+🎰 INICIA EL BINGO`);
     }
 }
 
-// 🔁 LOOP TABLERO
+// =====================
+// 🔁 LOOP
+// =====================
 setInterval(actualizarTablero, 5000);
 
-// 🎰 INICIO
+// =====================
+// 🚀 INICIO
+// =====================
+cargarDatos();
+
 bot.onText(/\/bingo/, async (msg) => {
 
     tableroChatId = msg.chat.id;
 
     const sent = await bot.sendMessage(msg.chat.id,
-`🎰 BINGO EN VIVO
+`🎰 BINGO ACTIVO
 
 💰 Total: $${totalDinero}`, {
         reply_markup: {
@@ -153,11 +191,12 @@ bot.onText(/\/bingo/, async (msg) => {
     tableroMessageId = sent.message_id;
 });
 
-// ⏱️ TIMER 10 MIN
+// =====================
+// ⏱️ TIMER
+// =====================
 function iniciarTimer(num) {
 
     startTimes[num] = Date.now();
-    alertados[num] = false;
 
     timers[num] = setTimeout(() => {
 
@@ -168,34 +207,31 @@ function iniciarTimer(num) {
             delete numeros[num];
 
             actualizarTablero();
+            guardarDatos();
 
             bot.sendMessage(tableroChatId,
 `⛔️ TIEMPO AGOTADO
 
 👤 ${user}
-🔢 ${num}
-
-🟢 LIBERADO`);
+🔢 ${num}`);
         }
 
     }, 600000);
 }
 
+// =====================
 // 🎯 CALLBACKS
+// =====================
 bot.on('callback_query', async (query) => {
 
     const data = query.data;
     const user = getUser(query.from);
 
-    // 🎯 TOMAR NÚMERO
     if (data.startsWith("num_")) {
 
         const num = parseInt(data.split("_")[1]);
 
-        if (numeros[num]) {
-            bot.answerCallbackQuery(query.id, { text: "❌ Ocupado" });
-            return;
-        }
+        if (numeros[num]) return;
 
         numeros[num] = {
             user: {
@@ -206,17 +242,16 @@ bot.on('callback_query', async (query) => {
         };
 
         iniciarTimer(num);
+
         actualizarTablero();
+        guardarDatos();
 
         bot.sendMessage(tableroChatId,
-`🎯 NÚMERO TOMADO
+`🎯 TOMADO
 
 👤 ${user}
-🔢 ${num}
+🔢 ${num}`);
 
-💰 PAGA Y ENVÍA CAPTURA`);
-
-        bot.answerCallbackQuery(query.id);
         return;
     }
 
@@ -224,125 +259,83 @@ bot.on('callback_query', async (query) => {
 
     const num = parseInt(data.split("_")[1]);
 
-    // ❌ RECHAZAR TODO
-    if (data.startsWith("no_all_")) {
+    if (!numeros[num]) return;
 
-        const nums = data.replace("no_all_", "").split("-");
-
-        nums.forEach(n => delete numeros[n]);
-
-        actualizarTablero();
-        reenviarTablero();
-
-        return;
-    }
-
-    // ✅ APROBAR TODO
-    if (data.startsWith("ok_all_")) {
-
-        const nums = data.replace("ok_all_", "").split("-");
-
-        nums.forEach(n => {
-            if (numeros[n]) {
-                numeros[n].estado = "pagado";
-                totalDinero += 3000;
-            }
-        });
-
-        actualizarTablero();
-
-        bot.sendMessage(tableroChatId, "⏳ VERIFICANDO PAGO...");
-
-        setTimeout(() => {
-
-            bot.sendMessage(tableroChatId,
-`✅ PAGO CONFIRMADO
-
-🔢 ${nums.join(", ")}
-💰 TOTAL: $${nums.length * 3000}`);
-
-            reenviarTablero();
-            verificarJuegoLleno();
-
-        }, 1500);
-
-        return;
-    }
-
-    // ❌ INDIVIDUAL
+    // ❌ RECHAZAR
     if (data.startsWith("no_")) {
 
         delete numeros[num];
 
         actualizarTablero();
-        reenviarTablero();
-        verificarJuegoLleno();
+        guardarDatos();
 
+        reenviarTablero();
         return;
     }
 
-    // ✅ INDIVIDUAL
+    // ✅ APROBAR
     if (data.startsWith("ok_")) {
 
         numeros[num].estado = "pagado";
         totalDinero += 3000;
 
         actualizarTablero();
+        guardarDatos();
 
-        bot.sendMessage(tableroChatId, "⏳ VERIFICANDO PAGO...");
+        bot.sendMessage(tableroChatId, "⏳ verificando...");
 
         setTimeout(() => {
 
             bot.sendMessage(tableroChatId,
-`✅ PAGO CONFIRMADO
+`✅ PAGO OK
 
-🔢 ${num}
-💰 +$3.000`);
+🔢 ${num}`);
 
             reenviarTablero();
             verificarJuegoLleno();
 
-        }, 1500);
+        }, 1200);
     }
 });
 
+// =====================
 // 📸 FOTO MULTI
+// =====================
 bot.on('photo', (msg) => {
 
     const userId = msg.from.id;
     const fileId = msg.photo[msg.photo.length - 1].file_id;
 
-    let numsUser = [];
+    let nums = [];
 
     for (let n in numeros) {
         if (numeros[n].user.id === userId && numeros[n].estado === "reservado") {
-            numsUser.push(n);
+            nums.push(n);
         }
     }
 
-    if (!numsUser.length) return;
+    if (!nums.length) return;
 
-    numsUser.forEach(n => {
-        clearTimeout(timers[n]);
+    nums.forEach(n => {
         numeros[n].estado = "pendiente";
+        clearTimeout(timers[n]);
     });
 
     actualizarTablero();
+    guardarDatos();
 
     bot.sendPhoto(tableroChatId, fileId, {
         caption:
-`📥 PAGO EN REVISIÓN
+`📥 PAGO
 
-🔢 ${numsUser.join(", ")}
-💰 $${numsUser.length * 3000}`,
-
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: "✅ APROBAR TODO", callback_data: `ok_all_${numsUser.join("-")}` },
-                    { text: "❌ RECHAZAR TODO", callback_data: `no_all_${numsUser.join("-")}` }
-                ]
-            ]
-        }
+🔢 ${nums.join(", ")}
+💰 $${nums.length * 3000}`
     });
 });
+
+// =====================
+// 🔁 AUTO GUARDADO
+// =====================
+setInterval(() => {
+    guardarDatos();
+}, 10000);
