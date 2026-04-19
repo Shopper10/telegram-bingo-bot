@@ -65,7 +65,7 @@ function actualizarTablero() {
     ).catch(() => {});
 }
 
-// 🔁 AUTO REFRESH
+// 🔁 AUTO REFRESH (seguridad visual)
 setInterval(() => {
 
     if (!tableroChatId || !tableroMessageId) return;
@@ -119,7 +119,7 @@ bot.on('callback_query', (query) => {
 📸 Envía captura en el grupo`);
 });
 
-// 🔥 ADMIN
+// 🔥 ADMIN (APROBAR / RECHAZAR)
 bot.on('callback_query', async (query) => {
 
     const data = query.data;
@@ -151,7 +151,7 @@ bot.on('callback_query', async (query) => {
         return;
     }
 
-    // ✅ APROBAR + SLOT MACHINE
+    // ✅ APROBAR + SLOT MACHINE + REPOST
     if (data.startsWith("ok_")) {
 
         const anim = await bot.sendMessage(tableroChatId,
@@ -166,11 +166,11 @@ bot.on('callback_query', async (query) => {
 
 ${slots[i]}
 
-⏳ verificando pago...`, {
+⏳ verificando...`, {
                     chat_id: tableroChatId,
                     message_id: anim.message_id
                 });
-            }, i * 700);
+            }, i * 600);
         }
 
         setTimeout(() => {
@@ -179,7 +179,7 @@ ${slots[i]}
             totalDinero += 3000;
 
             bot.editMessageText(
-`🎉 APROBADO
+`🎉 PAGO APROBADO
 
 👤 ${user}
 🔢 ${num}
@@ -188,8 +188,19 @@ ${slots[i]}
                 message_id: anim.message_id
             });
 
+            // 🔄 ACTUALIZA TABLERO
             actualizarTablero();
 
+            // 📢 EDITA TABLERO EXISTENTE
+            bot.editMessageReplyMarkup(
+                { inline_keyboard: generarTablero() },
+                {
+                    chat_id: tableroChatId,
+                    message_id: tableroMessageId
+                }
+            ).catch(() => {});
+
+            // 📢 REENVÍA TABLERO NUEVO (IMPORTANTE)
             bot.sendMessage(tableroChatId,
 `🎰 TABLERO ACTUALIZADO EN VIVO`, {
                 reply_markup: {
@@ -197,7 +208,7 @@ ${slots[i]}
                 }
             });
 
-        }, 4000);
+        }, 3500);
 
         bot.answerCallbackQuery(query.id, { text: "Procesando..." });
     }
