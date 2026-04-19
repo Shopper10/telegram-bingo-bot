@@ -7,15 +7,15 @@ const bot = new TelegramBot(token, { polling: true });
 
 // 📦 DATA
 let numeros = {};
-let tableroMessageId = null;
 let tableroChatId = null;
+let tableroMessageId = null;
 
 // 👤 USER
 function getUser(user) {
     return user.username ? `@${user.username}` : user.first_name;
 }
 
-// 🎰 TABLERO CASINO
+// 🎰 TABLERO
 function generarTablero() {
     let keyboard = [];
 
@@ -51,7 +51,7 @@ function generarTablero() {
     return keyboard;
 }
 
-// 🔄 ACTUALIZAR TABLERO
+// 🔄 ACTUALIZAR TABLERO (SEGURO)
 function actualizarTablero() {
 
     if (!tableroChatId || !tableroMessageId) return;
@@ -62,10 +62,12 @@ function actualizarTablero() {
             chat_id: tableroChatId,
             message_id: tableroMessageId
         }
-    ).catch(() => {});
+    ).catch(err => {
+        console.log("⚠️ update error:", err.message);
+    });
 }
 
-// ⏱️ TIMER 5 MIN (AUTOMÁTICO)
+// ⏱️ BLOQUEO AUTOMÁTICO 5 MIN
 function bloqueoAutomatico(num, tiempo = 300000) {
 
     setTimeout(() => {
@@ -79,24 +81,23 @@ function bloqueoAutomatico(num, tiempo = 300000) {
             actualizarTablero();
 
             bot.sendMessage(tableroChatId,
-`⛔️ NÚMERO LIBERADO
+`⛔️ LIBERADO POR FALTA DE PAGO
 
-🔢 ${num}
-👤 ${user}
-⌛ Tiempo agotado sin pago`
+🔢 Número: ${num}
+👤 ${user}`
             );
         }
 
     }, tiempo);
 }
 
-// 🎰 CREAR TABLERO
+// 🎰 CREAR TABLERO (SOLO UNO ACTIVO)
 bot.onText(/\/bingo/, async (msg) => {
 
     tableroChatId = msg.chat.id;
 
     const sent = await bot.sendMessage(msg.chat.id,
-`🎰 CASINO BINGO EN VIVO
+`🎰 CASINO BINGO
 
 Selecciona un número 👇`, {
         reply_markup: {
@@ -105,6 +106,8 @@ Selecciona un número 👇`, {
     });
 
     tableroMessageId = sent.message_id;
+
+    console.log("TABLERO ACTIVO:", tableroMessageId);
 });
 
 // 🎯 TOMAR NÚMERO
@@ -129,24 +132,22 @@ bot.on('callback_query', (query) => {
     bloqueoAutomatico(num);
 
     bot.answerCallbackQuery(query.id, {
-        text: `✔ ${user} tomó ${num}`
+        text: `✔ ${num} tomado`
     });
 
-    // 💥 MENSAJE IMPORTANTE PARA EL CLIENTE
     bot.sendMessage(tableroChatId,
 `🎯 NÚMERO RESERVADO
 
 👤 ${user}
-🔢 Número: ${num}
+🔢 ${num}
 
-💰 Por favor realiza pago de $3.000 a NEQUI
-📸 Envía la captura de pago aquí en el grupo
-
-⏱️ Tienes 5 minutos para confirmar`
+💰 Paga $3.000 a NEQUI
+📸 Envía captura aquí en el grupo
+⏱️ Tienes 5 minutos`
     );
 });
 
-// 📸 FOTO → ENVÍA AL ADMIN EN EL GRUPO
+// 📸 FOTO → ADMIN EN GRUPO
 bot.on('photo', (msg) => {
 
     if (msg.chat.type === "private") return;
@@ -176,8 +177,8 @@ bot.on('photo', (msg) => {
 `⏱️ PAGO RECIBIDO
 
 👤 ${user}
-🔢 Número: ${numero}
-⏳ En validación por admin`
+🔢 ${numero}
+En revisión...`
     );
 
     // 📥 BOTONES EN EL GRUPO
@@ -185,7 +186,7 @@ bot.on('photo', (msg) => {
         caption: `📥 VERIFICAR PAGO
 
 👤 ${user}
-🔢 Número: ${numero}`,
+🔢 ${numero}`,
         reply_markup: {
             inline_keyboard: [
                 [
