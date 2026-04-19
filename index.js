@@ -304,3 +304,20 @@ bot.on('photo', (msg) => {
         }
     });
 });
+function todosVendidos() {
+    for (let i = 1; i <= 15; i++) {
+        if (!numeros[i] || numeros[i].estado !== "pagado") {
+            return false;
+        }
+    }
+    return true;
+}
+if (todosVendidos()) {
+    bot.sendMessage(tableroChatId,
+`🎉 TODOS LOS NÚMEROS VENDIDOS 🎉
+
+🎰 INICIAMOS LA PARTIDA EN BREVE
+📺 PREPÁRENSE PARA EL BINGO EN CASA
+
+🔥 NO SE PERMITEN MÁS JUEGOS`);
+}
