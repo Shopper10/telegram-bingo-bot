@@ -4,87 +4,70 @@ const token = process.env.TOKEN;
 const bot = new TelegramBot(token, { polling: true });
 
 // 📦 Base de datos en memoria
-let numeros = {}; 
-// estructura:
-// numeros[1] = { user, estado, timeout }
+let numeros = {};
+let bloqueando = {}; // anti doble click
 
-let contadorUsuarios = {};
-
-// ⏱ tiempo de expiración (5 min)
 const TIEMPO_RESERVA = 5 * 60 * 1000;
 
+// ==========================
 // 🎮 START
+// ==========================
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id,
-        "🎱 Bingo activo\n\nUsa /numeros para elegir tu número"
-    );
+    bot.sendMessage(msg.chat.id, "🎱 Bingo PRO activo\nUsa /bingo para ver el tablero");
 });
 
-// 📊 CONTADOR DE USUARIOS
-function actualizarContador(user, delta) {
-    if (!contadorUsuarios[user]) {
-        contadorUsuarios[user] = 0;
-    }
-    contadorUsuarios[user] += delta;
-}
-
-// 🎱 TABLERO DINÁMICO
-function generarTeclado() {
+// ==========================
+// 🎱 TABLERO 5x3
+// ==========================
+function generarTablero() {
     let keyboard = [];
+    let fila = [];
 
     for (let i = 1; i <= 15; i++) {
 
         let texto = `🟢 ${i}`;
 
         if (numeros[i]) {
-            let user = numeros[i].user;
+            let u = numeros[i].user;
 
             if (numeros[i].estado === "reservado") {
-                texto = `🟡 ${i} ${user} (pendiente)`;
+                texto = `🟡 ${i} ${u}`;
             }
 
             if (numeros[i].estado === "pagado") {
-                texto = `🔴 ${i} ${user} (pagado)`;
+                texto = `🔴 ${i} ${u}`;
             }
         }
 
-        keyboard.push([{
+        fila.push({
             text: texto,
             callback_data: `num_${i}`
-        }]);
+        });
+
+        // 🔥 5 columnas por fila (5x3)
+        if (fila.length === 5) {
+            keyboard.push(fila);
+            fila = [];
+        }
     }
 
     return keyboard;
 }
 
-// 🎱 MOSTRAR TABLERO
-bot.onText(/\/numeros/, (msg) => {
+// ==========================
+// 🎱 MOSTRAR BINGO
+// ==========================
+bot.onText(/\/bingo/, (msg) => {
     bot.sendMessage(msg.chat.id, "🎱 TABLERO BINGO:", {
         reply_markup: {
-            inline_keyboard: generarTeclado()
+            inline_keyboard: generarTablero()
         }
     });
 });
 
-// ⏱ AUTO LIBERAR
-function programarLiberacion(num) {
-    if (numeros[num].timeout) clearTimeout(numeros[num].timeout);
-
-    numeros[num].timeout = setTimeout(() => {
-        let user = numeros[num].user;
-
-        delete numeros[num];
-
-        actualizarContador(user, -1);
-
-        bot.sendMessage(
-            Object.keys(contadorUsuarios).length > 0 ? msg.chat.id : 0,
-            `⏱ Número ${num} liberado por no pago`
-        );
-    }, TIEMPO_RESERVA);
-}
-
+// ==========================
 // 🎯 CLICK NÚMERO
+// ==========================
 bot.on('callback_query', (query) => {
 
     const chatId = query.message.chat.id;
@@ -96,8 +79,19 @@ bot.on('callback_query', (query) => {
 
     const num = parseInt(query.data.split("_")[1]);
 
+    // 🛑 ANTI DOBLE CLICK
+    if (bloqueando[num]) {
+        bot.answerCallbackQuery(query.id, {
+            text: "⏳ Procesando..."
+        });
+        return;
+    }
+
+    bloqueando[num] = true;
+
     // ❌ ocupado
     if (numeros[num]) {
+        bloqueando[num] = false;
         bot.answerCallbackQuery(query.id, {
             text: "❌ No disponible"
         });
@@ -110,73 +104,55 @@ bot.on('callback_query', (query) => {
         estado: "reservado"
     };
 
-    actualizarContador(user, 1);
-
-    bot.answerCallbackQuery(query.id, {
-        text: `🟡 Reservaste ${num} (5 min)`
-    });
-
-    // ⏱ iniciar timer
-    numeros[num].timeout = setTimeout(() => {
+    // ⏱ auto liberación
+    setTimeout(() => {
         if (numeros[num] && numeros[num].estado === "reservado") {
-
-            actualizarContador(numeros[num].user, -1);
-
             delete numeros[num];
-
-            bot.sendMessage(chatId,
-                `⏱ Número ${num} liberado por no pago`
-            );
+            bot.sendMessage(chatId, `⏱ Número ${num} liberado por no pago`);
         }
     }, TIEMPO_RESERVA);
 
-    // 🔄 actualizar tablero
-    bot.editMessageReplyMarkup(
-        { inline_keyboard: generarTeclado() },
-        { chat_id: chatId, message_id: messageId }
-    );
+    bot.answerCallbackQuery(query.id, {
+        text: `🟡 Reservaste ${num}`
+    });
 
-    bot.sendMessage(chatId,
-        `🟡 ${user} reservó el número ${num}\n💰 Pendiente de pago`
-    );
+    // ⚡ actualizar tablero (animación real)
+    bot.editMessageReplyMarkup(
+        { inline_keyboard: generarTablero() },
+        {
+            chat_id: chatId,
+            message_id: messageId
+        }
+    ).catch(() => {});
+
+    bot.sendMessage(chatId, `🟡 ${user} reservó el número ${num}`);
+
+    bloqueando[num] = false;
 });
 
-// 💰 MARCAR PAGO (ADMIN)
+// ==========================
+// 💰 MARCAR PAGO (MANUAL)
+// ==========================
 bot.onText(/\/pagar (\d+)/, (msg, match) => {
 
     const num = parseInt(match[1]);
 
     if (!numeros[num]) {
-        bot.sendMessage(msg.chat.id, "❌ No existe ese número");
+        bot.sendMessage(msg.chat.id, "❌ No existe");
         return;
     }
 
     numeros[num].estado = "pagado";
-
-    if (numeros[num].timeout) {
-        clearTimeout(numeros[num].timeout);
-    }
 
     bot.sendMessage(msg.chat.id,
         `🔴 Número ${num} PAGADO por ${numeros[num].user}`
     );
 });
 
-// 📊 VER CONTADORES
-bot.onText(/\/stats/, (msg) => {
-
-    let texto = "📊 NUMEROS POR USUARIO:\n\n";
-
-    for (let user in contadorUsuarios) {
-        texto += `${user}: ${contadorUsuarios[user]}\n`;
-    }
-
-    bot.sendMessage(msg.chat.id, texto);
-});
-
+// ==========================
 // 🔄 RESET
+// ==========================
 bot.onText(/\/reset/, (msg) => {
     numeros = {};
-    contadorUsuarios = {};
     bot.sendMessage(msg.chat.id, "🔄 Bingo reiniciado");
 });
