@@ -20,9 +20,7 @@ let bingoIniciado = false;
 
 // =====================
 function load() {
-    if (fs.existsSync(DB_FILE)) {
-        db = JSON.parse(fs.readFileSync(DB_FILE));
-    }
+    if (fs.existsSync(DB_FILE)) db = JSON.parse(fs.readFileSync(DB_FILE));
 }
 function save() {
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
@@ -35,14 +33,23 @@ function getUser(u) {
 }
 
 // =====================
-function getMinutesLeft(start) {
+// ⏱ TIMER EN VIVO (MIN:SEG)
+function getTimeLeft(start) {
+
     const limit = 10 * 60 * 1000;
     const diff = limit - (Date.now() - start);
-    return Math.ceil(diff / 60000);
+
+    if (diff <= 0) return "0:00";
+
+    const sec = Math.floor(diff / 1000);
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+
+    return `${m}:${s < 10 ? "0" + s : s}`;
 }
 
 // =====================
-// 🎰 TABLERO LIMPIO
+// 🎰 TABLERO
 function generarTablero() {
 
     let kb = [];
@@ -58,7 +65,7 @@ function generarTablero() {
 
         if (item.estado === "reservado" || item.estado === "pendiente") {
             kb.push([{
-                text: `⛔️ ${item.name} ⏱ ${getMinutesLeft(item.time)}min`,
+                text: `⛔️ ${item.name} ⏱ ${getTimeLeft(item.time)}`,
                 callback_data: "wait"
             }]);
             continue;
@@ -73,6 +80,7 @@ function generarTablero() {
 }
 
 // =====================
+// 🔄 ACTUALIZA TABLERO
 function updateBoard() {
 
     if (!chatId || !messageId) return;
@@ -90,14 +98,13 @@ function updateBoard() {
 }
 
 // =====================
-// 🚀 /bingo (RESET TOTAL)
+// 🚀 /bingo RESET TOTAL
 bot.onText(/\/bingo/, async (msg) => {
 
     if (msg.from.id !== ADMIN_ID) return;
 
     chatId = msg.chat.id;
 
-    // 🔥 RESET TOTAL
     db.numeros = {};
     db.total = 0;
     bingoIniciado = false;
@@ -235,7 +242,7 @@ bot.on("callback_query", (q) => {
         save();
         updateBoard();
 
-        bot.sendMessage(ADMIN_ID, "✅ APROBADO");
+        bot.sendMessage(chatId, "✅ APROBADO");
     }
 
     if (d.startsWith("no_")) {
@@ -247,11 +254,18 @@ bot.on("callback_query", (q) => {
         save();
         updateBoard();
 
-        bot.sendMessage(ADMIN_ID, "❌ RECHAZADO");
+        bot.sendMessage(chatId, "❌ RECHAZADO");
     }
 });
 
 // =====================
+// 🔄 TIMER EN VIVO
+setInterval(() => {
+    updateBoard();
+}, 5000);
+
+// =====================
+// 🎰 INICIO AUTOMÁTICO
 function checkFull() {
 
     if (!bingoIniciado && Object.keys(db.numeros).length === 15) {
@@ -263,6 +277,7 @@ function checkFull() {
 }
 
 // =====================
+// 🎛 ADMIN PRIVADO
 bot.onText(/\/admin/, (msg) => {
 
     if (msg.from.id !== ADMIN_ID) return;
