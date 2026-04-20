@@ -355,3 +355,56 @@ function iniciarBingo() {
 
     setTimeout(sacarNumero, 3000);
 }
+function sacarNumero() {
+
+    if (!bingoActivo) return;
+
+    let disponibles = [];
+
+    for (let i = 1; i <= 15; i++) {
+        if (!numerosSorteados.includes(i)) {
+            disponibles.push(i);
+        }
+    }
+
+    if (!disponibles.length) return;
+
+    let num = disponibles[Math.floor(Math.random() * disponibles.length)];
+
+    numerosSorteados.push(num);
+
+    bot.sendMessage(tableroChatId,
+`🎰 SALE: ${num}
+
+📊 ${numerosSorteados.join(" - ")}`);
+
+    verificarGanador();
+
+    setTimeout(sacarNumero, 2500);
+}
+function verificarGanador() {
+
+    const lineas = [
+        [1,2,3,4,5],
+        [6,7,8,9,10],
+        [11,12,13,14,15]
+    ];
+
+    for (let linea of lineas) {
+
+        if (linea.every(n => numerosSorteados.includes(n))) {
+
+            bingoActivo = false;
+
+            bot.sendMessage(tableroChatId,
+`🏆 ¡BINGO!
+
+🎯 Línea: ${linea.join(" - ")}`);
+
+            return;
+        }
+    }
+}
+if (todosVendidos()) {
+    iniciarBingo();
+}
