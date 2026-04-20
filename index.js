@@ -18,7 +18,6 @@ let totalDinero = 0;
 
 let timers = {};
 let startTimes = {};
-let alertados = {};
 
 // =====================
 // LOAD / SAVE
@@ -58,22 +57,7 @@ function formatTiempo(ms) {
 }
 
 // =====================
-// ANIMACIÓN SIMPLE (SOLO CARGANDO)
-// =====================
-async function animacionCarga(chatId) {
-
-    let msg = await bot.sendMessage(chatId, "⏳ Cargando...");
-
-    await new Promise(r => setTimeout(r, 800));
-
-    await bot.editMessageText("⏳ Cargando...", {
-        chat_id: chatId,
-        message_id: msg.message_id
-    });
-}
-
-// =====================
-// TABLERO
+// TABLERO (FAST)
 // =====================
 function generarTablero() {
 
@@ -83,7 +67,7 @@ function generarTablero() {
 
         const item = numeros[i];
 
-        let text = `🟢 ${i} DISPONIBLE`;
+        let text = `🟢 ${i}`;
 
         if (item) {
 
@@ -97,7 +81,7 @@ function generarTablero() {
             }
 
             if (item.estado === "pagado") {
-                text = `🟡 ${i} - ${u} ✔`;
+                text = `✅ ${i} - ${u}`;
             }
         }
 
@@ -108,7 +92,7 @@ function generarTablero() {
 }
 
 // =====================
-// REPINTAR TABLERO
+// REPOST TABLERO (IMPORTANTE)
 // =====================
 function repostTablero() {
 
@@ -127,28 +111,11 @@ function repostTablero() {
 }
 
 // =====================
-// UPDATE BOTONES
-// =====================
-function actualizarTablero() {
-
-    if (!tableroChatId || !tableroMessageId) return;
-
-    bot.editMessageReplyMarkup(
-        { inline_keyboard: generarTablero() },
-        {
-            chat_id: tableroChatId,
-            message_id: tableroMessageId
-        }
-    ).catch(() => {});
-}
-
-// =====================
 // TIMER 10 MIN
 // =====================
 function iniciarTimer(num) {
 
     startTimes[num] = Date.now();
-    alertados[num] = {};
 
     if (timers[num]) clearTimeout(timers[num]);
 
@@ -161,9 +128,8 @@ function iniciarTimer(num) {
         const user = item.user.name;
 
         delete numeros[num];
-        delete startTimes[num];
         delete timers[num];
-        delete alertados[num];
+        delete startTimes[num];
 
         guardarDatos();
 
@@ -172,17 +138,27 @@ function iniciarTimer(num) {
 
 🎰 ${num}
 👤 ${user}`);
+
     }, 600000);
 }
 
 // =====================
-// LOOP OPTIMIZADO
+// LOOP LIGERO (SIN LAG)
 // =====================
 setInterval(() => {
 
-    actualizarTablero();
+    if (tableroChatId && tableroMessageId) {
 
-}, 6000);
+        bot.editMessageReplyMarkup(
+            { inline_keyboard: generarTablero() },
+            {
+                chat_id: tableroChatId,
+                message_id: tableroMessageId
+            }
+        ).catch(() => {});
+    }
+
+}, 5000);
 
 // =====================
 // START
@@ -192,8 +168,6 @@ cargarDatos();
 bot.onText(/\/bingo/, async (msg) => {
 
     tableroChatId = msg.chat.id;
-
-    await animacionCarga(msg.chat.id);
 
     const sent = await bot.sendMessage(msg.chat.id,
 `🎰 CASINO BINGO
@@ -208,9 +182,9 @@ bot.onText(/\/bingo/, async (msg) => {
 });
 
 // =====================
-// UN SOLO CALLBACK (FIX CRÍTICO)
+// CALLBACK (TODO EN UNO)
 // =====================
-bot.on('callback_query', async (query) => {
+bot.on('callback_query', (query) => {
 
     const data = query.data;
 
@@ -265,13 +239,9 @@ bot.on('callback_query', async (query) => {
 
         guardarDatos();
 
-        bot.sendMessage(tableroChatId, "✅ CONFIRMADO ✔").then(msg => {
-            setTimeout(() => {
-                bot.deleteMessage(tableroChatId, msg.message_id).catch(() => {});
-            }, 2500);
-        });
+        bot.sendMessage(tableroChatId, "✅ CONFIRMADO ✔");
 
-        repostTablero();
+        repostTablero(); // 🔥 IMPORTANTE
         return;
     }
 
@@ -289,15 +259,15 @@ bot.on('callback_query', async (query) => {
 
         bot.sendMessage(tableroChatId, "❌ RECHAZADO");
 
-        repostTablero();
+        repostTablero(); // 🔥 IMPORTANTE
         return;
     }
 });
 
 // =====================
-// FOTO (ESTABLE)
+// FOTO (RÁPIDO + ESTABLE)
 // =====================
-bot.on('message', async (msg) => {
+bot.on('message', (msg) => {
 
     if (!msg.photo) return;
 
@@ -327,8 +297,6 @@ bot.on('message', async (msg) => {
     });
 
     guardarDatos();
-
-    await bot.sendMessage(msg.chat.id, "⏳ Cargando...");
 
     bot.sendPhoto(tableroChatId, fileId, {
         caption:
