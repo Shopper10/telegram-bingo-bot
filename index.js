@@ -16,7 +16,6 @@ const DB_FILE = "./data.json";
 let db = { numeros: {}, total: 0 };
 let chatId = null;
 let messageId = null;
-let bingoIniciado = false;
 
 // =====================
 function load() {
@@ -42,34 +41,7 @@ function getMinutesLeft(start) {
 }
 
 // =====================
-// ⏱ AUTO LIBERAR
-setInterval(() => {
-    let changed = false;
-
-    for (let n in db.numeros) {
-        let item = db.numeros[n];
-
-        if (item.estado === "reservado") {
-            let diff = Date.now() - item.time;
-
-            if (diff >= 10 * 60 * 1000) {
-                delete db.numeros[n];
-                db.total -= 3000;
-                changed = true;
-
-                bot.sendMessage(chatId, `⏱ Número ${n} liberado por no pago`);
-            }
-        }
-    }
-
-    if (changed) {
-        save();
-        updateBoard();
-    }
-
-}, 30000);
-
-// =====================
+// 🎰 TABLERO (GRUPO LIMPIO)
 function generarTablero() {
 
     let kb = [];
@@ -114,42 +86,15 @@ function updateBoard() {
         message_id: messageId,
         reply_markup: generarTablero()
     }).catch(()=>{});
-
-    checkFull();
-    checkAlmostFull();
 }
 
 // =====================
-// ⚠️ CASI LLENO
-function checkAlmostFull() {
-    let disponibles = 15 - Object.keys(db.numeros).length;
-
-    if (disponibles === 3) {
-        bot.sendMessage(chatId, "⚠️ QUEDAN SOLO 3 NÚMEROS");
-    }
-}
-
-// =====================
-// 🎰 SOLO AVISA INICIO
-function checkFull() {
-
-    if (!bingoIniciado && Object.keys(db.numeros).length === 15) {
-
-        bingoIniciado = true;
-
-        bot.sendMessage(chatId,
-`🎰 INICIO DE BINGO`);
-    }
-}
-
-// =====================
-// 🚀 INICIAR BINGO
+// 🚀 INICIO BINGO
 bot.onText(/\/bingo/, async (msg) => {
 
     if (msg.from.id !== ADMIN_ID) return;
 
     chatId = msg.chat.id;
-    bingoIniciado = false;
 
     const sent = await bot.sendMessage(chatId,
 `🎰 CASINO BINGO`, {
@@ -165,125 +110,31 @@ bot.on("callback_query", (q) => {
 
     bot.answerCallbackQuery(q.id).catch(()=>{});
 
-    let d = q.data;
+    if (!q.data.startsWith("buy_")) return;
 
-    if (d.startsWith("buy_")) {
+    let n = q.data.split("_")[1];
 
-        let n = d.split("_")[1];
+    if (db.numeros[n]) return;
 
-        if (db.numeros[n]) return;
+    db.numeros[n] = {
+        name: getUser(q.from),
+        estado: "reservado",
+        time: Date.now()
+    };
 
-        db.numeros[n] = {
-            name: getUser(q.from),
-            estado: "reservado",
-            time: Date.now()
-        };
+    db.total += 3000;
 
-        db.total += 3000;
+    save();
+    updateBoard();
 
-        save();
-        updateBoard();
-
-        bot.sendMessage(chatId,
+    bot.sendMessage(chatId,
 `💰 RESERVADO
 🎰 ${n}
 ⏱ 10 MIN`);
-    }
-
-    // =====================
-    if (q.from.id !== ADMIN_ID) return;
-
-    // APROBAR
-    if (d.startsWith("ok_")) {
-
-        let nums = d.split("_")[1].split("-");
-
-        nums.forEach(n => db.numeros[n].estado = "pagado");
-
-        save();
-        updateBoard();
-
-        bot.deleteMessage(chatId, q.message.message_id).catch(()=>{});
-        bot.sendMessage(chatId, "✅ PAGO APROBADO");
-    }
-
-    // RECHAZAR
-    if (d.startsWith("no_")) {
-
-        let nums = d.split("_")[1].split("-");
-
-        nums.forEach(n => delete db.numeros[n]);
-
-        save();
-        updateBoard();
-
-        bot.deleteMessage(chatId, q.message.message_id).catch(()=>{});
-        bot.sendMessage(chatId, "❌ PAGO RECHAZADO");
-    }
-
-    // PAY ALL
-    if (d === "admin_payall") {
-
-        for (let n in db.numeros) {
-            db.numeros[n].estado = "pagado";
-        }
-
-        save();
-        updateBoard();
-    }
-
-    // PAY INDIVIDUAL
-    if (d.startsWith("pay_")) {
-
-        let n = d.split("_")[1];
-
-        if (db.numeros[n]) {
-            db.numeros[n].estado = "pagado";
-            save();
-            updateBoard();
-        }
-    }
-
-    // NUEVA PARTIDA
-    if (d === "admin_new") {
-
-        db.numeros = {};
-        db.total = 0;
-        bingoIniciado = false;
-
-        save();
-        updateBoard();
-    }
-
-    // RESET
-    if (d === "admin_reset") {
-
-        db = { numeros: {}, total: 0 };
-        bingoIniciado = false;
-
-        save();
-        updateBoard();
-    }
-
-    // PANEL PAY
-    if (d === "admin_payselect") {
-
-        let botones = [];
-
-        for (let i = 1; i <= 15; i++) {
-            if (db.numeros[i] && db.numeros[i].estado !== "pagado") {
-                botones.push([{ text: `💰 Pagar ${i}`, callback_data: `pay_${i}` }]);
-            }
-        }
-
-        bot.sendMessage(ADMIN_ID, "🎯 Selecciona número:", {
-            reply_markup: { inline_keyboard: botones }
-        });
-    }
 });
 
 // =====================
-// 📸 COMPROBANTE
+// 📸 COMPROBANTE (GRUPO SOLO BARRA + MENSAJE SIMPLE)
 bot.on("message", (msg) => {
 
     if (!msg.photo) return;
@@ -304,7 +155,8 @@ bot.on("message", (msg) => {
     let bar = ["⬜️⬜️⬜️⬜️⬜️","🟩⬜️⬜️⬜️⬜️","🟩🟩⬜️⬜️⬜️","🟩🟩🟩⬜️⬜️","🟩🟩🟩🟩⬜️","🟩🟩🟩🟩🟩"];
     let i = 0;
 
-    bot.sendMessage(chatId, "🔍 COMPROBANDO PAGO...\n⬜️⬜️⬜️⬜️⬜️").then((m) => {
+    bot.sendMessage(chatId,
+`🔍 COMPROBANDO PAGO...`).then((m) => {
 
         let id = m.message_id;
 
@@ -313,9 +165,7 @@ bot.on("message", (msg) => {
             bot.editMessageText(
 `🔍 COMPROBANDO PAGO...
 
-${bar[i]}
-
-🎰 ${nums.join(", ")}`, {
+${bar[i]}`, {
                 chat_id: chatId,
                 message_id: id
             }).catch(()=>{});
@@ -325,8 +175,16 @@ ${bar[i]}
             if (i >= bar.length) {
                 clearInterval(interval);
 
+                // 👮 SOLO MENSAJE SIMPLE EN GRUPO (SIN BOTONES)
                 bot.sendMessage(chatId,
-`📸 PAGO EN REVISIÓN
+`📸 PAGO RECIBIDO
+
+🎰 ${nums.join(", ")}
+👤 ${getUser(msg.from)}`);
+
+                // 🔐 ENVIAR A ADMIN PRIVADO CON BOTONES
+                bot.sendMessage(ADMIN_ID,
+`📸 PAGO PARA APROBAR
 
 🎰 ${nums.join(", ")}
 👤 ${getUser(msg.from)}`, {
@@ -346,31 +204,53 @@ ${bar[i]}
 });
 
 // =====================
-// 🎛 PANEL ADMIN PRIVADO
+// 👮 SOLO ADMIN PRIVADO
+bot.on("callback_query", (q) => {
+
+    if (q.from.id !== ADMIN_ID) return;
+
+    let d = q.data;
+
+    if (d.startsWith("ok_")) {
+
+        let nums = d.split("_")[1].split("-");
+
+        nums.forEach(n => {
+            if (db.numeros[n]) db.numeros[n].estado = "pagado";
+        });
+
+        save();
+        updateBoard();
+
+        bot.sendMessage(ADMIN_ID, "✅ APROBADO");
+    }
+
+    if (d.startsWith("no_")) {
+
+        let nums = d.split("_")[1].split("-");
+
+        nums.forEach(n => delete db.numeros[n]);
+
+        save();
+        updateBoard();
+
+        bot.sendMessage(ADMIN_ID, "❌ RECHAZADO");
+    }
+});
+
+// =====================
+// 🎛 PANEL SOLO PRIVADO
 bot.onText(/\/admin/, (msg) => {
 
     if (msg.from.id !== ADMIN_ID) return;
 
     if (msg.chat.type !== "private") {
-        bot.sendMessage(msg.chat.id, "❌ Usa /admin en privado");
+        bot.sendMessage(msg.chat.id, "❌ Solo en privado");
         return;
     }
 
     bot.sendMessage(msg.chat.id,
 `🎛 PANEL ADMIN
 
-💰 Total: $${db.total}`, {
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: "🎰 Nueva partida", callback_data: "admin_new" },
-                    { text: "♻ Reset", callback_data: "admin_reset" }
-                ],
-                [
-                    { text: "💰 Pay all", callback_data: "admin_payall" },
-                    { text: "🎯 Pay número", callback_data: "admin_payselect" }
-                ]
-            ]
-        }
-    });
+💰 Total: $${db.total}`);
 });
