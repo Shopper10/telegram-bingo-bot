@@ -6,18 +6,10 @@ const ADMIN_ID = Number(process.env.ADMIN_ID);
 
 const bot = new TelegramBot(token, { polling: true });
 
-// =====================
-// ANTI DUPLICADO (RAILWAY FIX)
-// =====================
-if (global.botRunning) {
-    console.log("BOT YA ACTIVO - evitando duplicado");
-    process.exit(0);
-}
-global.botRunning = true;
-
-// =====================
 const DATA_FILE = "./data.json";
 
+// =====================
+// ESTADO
 // =====================
 let numeros = {};
 let tableroChatId = null;
@@ -65,7 +57,7 @@ function formatTiempo(ms) {
 }
 
 // =====================
-// TABLERO (FIX CLAVE)
+// TABLERO (FORMATO FINAL EXACTO)
 // =====================
 function generarTablero() {
 
@@ -75,10 +67,10 @@ function generarTablero() {
 
         const item = numeros[i];
 
-        // 🔥 SIEMPRE DISPONIBLE SI NO EXISTE
+        // 🟢 DISPONIBLE
         if (!item) {
             kb.push([{
-                text: `🟢 ${i} - DISPONIBLE`,
+                text: `🟢 ${i}- DISPONIBLE`,
                 callback_data: `num_${i}`
             }]);
             continue;
@@ -86,17 +78,19 @@ function generarTablero() {
 
         const u = item.user.name;
 
-        let text = `🟢 ${i} - DISPONIBLE`;
+        let text = `🟢 ${i}- DISPONIBLE`;
 
+        // ⛔ RESERVADO / PENDIENTE
         if (item.estado === "reservado" || item.estado === "pendiente") {
 
             let restante = 600000 - (Date.now() - startTimes[i]);
 
-            text = `⛔ ${i} - ${u} ⏱ ${formatTiempo(restante)}`;
+            text = `⛔ ${i}- ${u} ⏱ ${formatTiempo(restante)}`;
         }
 
+        // ✅ PAGADO
         if (item.estado === "pagado") {
-            text = `✅ ${i} - ${u}`;
+            text = `✅ ${i}- ${u} - PAGADO`;
         }
 
         kb.push([{
@@ -109,7 +103,7 @@ function generarTablero() {
 }
 
 // =====================
-// REPOST TABLERO
+// REPINTAR TABLERO
 // =====================
 function repostTablero() {
 
@@ -160,7 +154,7 @@ function iniciarTimer(num) {
 }
 
 // =====================
-// LOOP RÁPIDO RAILWAY SAFE
+// AUTO UPDATE TABLERO
 // =====================
 setInterval(() => {
 
@@ -198,15 +192,13 @@ bot.onText(/\/bingo/, async (msg) => {
 });
 
 // =====================
-// CALLBACKS (FIXED)
+// CALLBACKS
 // =====================
 bot.on('callback_query', (query) => {
 
     const data = query.data;
 
-    // =====================
     // TOMAR NÚMERO
-    // =====================
     if (data.startsWith("num_")) {
 
         const num = parseInt(data.split("_")[1]);
@@ -240,9 +232,7 @@ bot.on('callback_query', (query) => {
 
     const nums = data.split("_")[1]?.split("-") || [];
 
-    // =====================
     // APROBAR
-    // =====================
     if (data.startsWith("ok_")) {
 
         nums.forEach(n => {
@@ -261,9 +251,7 @@ bot.on('callback_query', (query) => {
         return;
     }
 
-    // =====================
     // RECHAZAR
-    // =====================
     if (data.startsWith("no_")) {
 
         nums.forEach(n => {
