@@ -4,18 +4,17 @@ const fs = require("fs");
 const token = process.env.TOKEN;
 const ADMIN_ID = Number(process.env.ADMIN_ID);
 
-// 🔥 evita doble instancia en Railway
-if (global.__BOT_RUNNING__) process.exit(0);
-global.__BOT_RUNNING__ = true;
+// 🔥 evitar duplicados Railway
+if (global.__RUN__) process.exit(0);
+global.__RUN__ = true;
 
 const bot = new TelegramBot(token, {
     polling: { autoStart: true, interval: 2000 }
 });
 
-console.log("🎰 CASINO BINGO PRO ONLINE");
+console.log("🎰 CASINO CLEAN ONLINE");
 
 // =====================
-// DB
 const DB_FILE = "./data.json";
 
 let db = {
@@ -26,7 +25,7 @@ let db = {
 let chatId = null;
 let messageId = null;
 let timers = {};
-let bingoStarted = false;
+let bingoActive = false;
 
 // =====================
 function load() {
@@ -47,7 +46,7 @@ function user(u) {
 }
 
 // =====================
-// 👤 TABLERO SOLO USUARIOS (SIN ADMIN)
+// 🧼 TABLERO LIMPIO (SIN BOTONES EXTRA NUNCA)
 function boardUser() {
 
     let kb = [];
@@ -76,25 +75,7 @@ function boardUser() {
 }
 
 // =====================
-// 🛠 TABLERO ADMIN (SEPARADO TOTAL)
-function boardAdmin() {
-
-    return {
-        inline_keyboard: [
-            [
-                { text: "⚡ PAY ALL", callback_data: "admin_payall" },
-                { text: "🔄 RESET", callback_data: "admin_reset" }
-            ],
-            [
-                { text: "📊 STATUS", callback_data: "admin_status" },
-                { text: "🎰 RULETA", callback_data: "admin_roulette" }
-            ]
-        ]
-    };
-}
-
-// =====================
-// 🔄 ACTUALIZAR TABLERO (SOLO USUARIOS)
+// 🔄 ACTUALIZAR TABLERO
 function updateBoard() {
 
     if (!chatId || !messageId) return;
@@ -129,89 +110,50 @@ function startTimer(n) {
 }
 
 // =====================
-// 🎰 RULETA VEGAS (ANIMADA REAL)
-function ruletaVegas(chatId) {
-
-    let nums = Array.from({ length: 15 }, (_, i) => i + 1);
-
-    bot.sendMessage(chatId, "🎰 RULETA VEGAS...").then((m) => {
-
-        let mid = m.message_id;
-        let steps = 0;
-
-        let interval = setInterval(() => {
-
-            let pick = nums[Math.floor(Math.random() * nums.length)];
-
-            bot.editMessageText(
-`🎰 GIRANDO RULETA...
-
-➡️ ${pick}`, {
-                chat_id: chatId,
-                message_id: mid
-            }).catch(()=>{});
-
-            steps++;
-
-        }, 120);
-
-        setTimeout(() => {
-
-            clearInterval(interval);
-
-            let winner = nums[Math.floor(Math.random() * nums.length)];
-            let name = db.numeros[winner]?.name || "Sin registro";
-
-            showWinner(mid, winner, name);
-
-        }, 9000);
-    });
-}
-
-// =====================
-// 🏆 GANADOR ANIMADO
-function showWinner(mid, winner, name) {
-
-    let frames = [
-        "🎉 B I N G O 🎉",
-        "🎉 B I N G O 🎉🏆",
-        "🏆 GANADOR",
-        `🎰 ${winner}`,
-        `👤 ${name}`,
-        "🎉 FELICIDADES 🏆"
-    ];
-
-    let i = 0;
-
-    let anim = setInterval(() => {
-
-        bot.editMessageText(frames[i], {
-            chat_id: chatId,
-            message_id: mid
-        }).catch(()=>{});
-
-        i++;
-
-        if (i >= frames.length) clearInterval(anim);
-
-    }, 900);
-}
-
-// =====================
-// 🔥 SOLD OUT CHECK
+// 🔥 CHECK SOLD OUT
 function checkSoldOut() {
 
-    if (bingoStarted) return;
+    if (bingoActive) return;
 
     for (let i = 1; i <= 15; i++) {
         if (!db.numeros[i] || db.numeros[i].estado !== "pagado") return;
     }
 
-    bingoStarted = true;
+    bingoActive = true;
 
-    bot.sendMessage(chatId, "🎉 SOLD OUT - INICIANDO RULETA VEGAS");
+    bot.sendMessage(chatId,
+`🎉🔥 NÚMEROS VENDIDOS COMPLETOS 🔥🎉
 
-    ruletaVegas(chatId);
+🎰 TODOS LOS NÚMEROS FUERON VENDIDOS
+🚀 INICIANDO BINGO...`);
+
+    setTimeout(() => {
+        startBingo();
+    }, 3000);
+}
+
+// =====================
+// 🎰 INICIO BINGO (SIMPLIFICADO)
+function startBingo() {
+
+    let nums = Array.from({ length: 15 }, (_, i) => i + 1);
+
+    bot.sendMessage(chatId, "🎰 INICIANDO BINGO... SUERTE 🍀");
+
+    setTimeout(() => {
+
+        let winner = nums[Math.floor(Math.random() * nums.length)];
+        let name = db.numeros[winner]?.name || "Sin registro";
+
+        bot.sendMessage(chatId,
+`🏆 BINGO FINAL 🏆
+
+🎰 Número ganador: ${winner}
+👤 ${name}
+
+🎉 FELICIDADES!`);
+
+    }, 4000);
 }
 
 // =====================
@@ -229,25 +171,13 @@ bot.onText(/\/bingo/, async (msg) => {
 });
 
 // =====================
-// 🛠 ADMIN SOLO
-bot.onText(/^\/admin$/, (msg) => {
-
-    if (msg.from.id !== ADMIN_ID) return;
-
-    bot.sendMessage(msg.chat.id, "🛠 PANEL ADMIN CASINO", {
-        reply_markup: boardAdmin()
-    });
-});
-
-// =====================
-// 🎯 CALLBACKS
+// 🎯 CALLBACKS (SIN BOTONES ADMIN EN PÚBLICO)
 bot.on("callback_query", (q) => {
 
     bot.answerCallbackQuery(q.id).catch(()=>{});
 
     const d = q.data;
 
-    // TOMAR NÚMERO
     if (d.startsWith("take_")) {
 
         let n = d.split("_")[1];
@@ -265,7 +195,7 @@ bot.on("callback_query", (q) => {
         updateBoard();
 
         bot.sendMessage(chatId,
-`💰 PAGA:
+`💰 PAGO:
 Nequi 3123902322
 🎰 Número ${n}
 ⏱ 10 min`);
@@ -273,52 +203,11 @@ Nequi 3123902322
         return;
     }
 
-    if (q.from.id !== ADMIN_ID) return;
-
-    // PAYALL
-    if (d === "admin_payall") {
-
-        for (let i = 1; i <= 15; i++) {
-            db.numeros[i] = { name: "ADMIN", estado: "pagado", start: Date.now() };
-        }
-
-        db.total = 15 * 3000;
-
-        save();
-        updateBoard();
-
-        checkSoldOut();
-    }
-
-    // RESET
-    if (d === "admin_reset") {
-
-        db = { numeros: {}, total: 0 };
-        bingoStarted = false;
-
-        save();
-        updateBoard();
-    }
-
-    // STATUS
-    if (d === "admin_status") {
-
-        bot.sendMessage(chatId,
-`📊 STATUS
-
-💰 Total: $${db.total}
-🎰 Activos: ${Object.keys(db.numeros).length}`);
-    }
-
-    // RULETA
-    if (d === "admin_roulette") {
-
-        ruletaVegas(chatId);
-    }
+    // ❌ todo lo demás ignorado en público
 });
 
 // =====================
-// 📸 FOTO PAGO
+// 📸 COMPROBANTE PAGO
 bot.on("message", (msg) => {
 
     if (!msg.photo) return;
@@ -342,6 +231,6 @@ bot.on("message", (msg) => {
     bot.sendMessage(chatId, "🔍 COMPROBANDO PAGO...");
 
     bot.sendPhoto(chatId, file, {
-        caption: `📥 PAGO\n🎰 ${nums.join(", ")}`
+        caption: `📥 COMPROBANTE\n🎰 ${nums.join(", ")}`
     });
 });
