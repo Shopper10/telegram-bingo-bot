@@ -4,15 +4,14 @@ const fs = require("fs");
 const token = process.env.TOKEN;
 const ADMIN_ID = Number(process.env.ADMIN_ID);
 
-// 🔥 anti duplicado Railway
-if (global.__BOT__) process.exit(0);
-global.__BOT__ = true;
+if (global.__RUNNING__) process.exit(0);
+global.__RUNNING__ = true;
 
 const bot = new TelegramBot(token, {
     polling: { autoStart: true, interval: 2000 }
 });
 
-console.log("🎰 CASINO PRO FINAL ONLINE");
+console.log("🎰 BINGO CASINO PRO ONLINE");
 
 // =====================
 const DB_FILE = "./data.json";
@@ -23,9 +22,9 @@ let db = {
 };
 
 let chatId = null;
-let messageId = null;
+let msgId = null;
 let timers = {};
-let bingoStarted = false;
+let bingoActive = false;
 
 // =====================
 function load() {
@@ -46,7 +45,7 @@ function user(u) {
 }
 
 // =====================
-// 🎰 TABLERO APP
+// 🎰 TABLERO
 function board() {
 
     let kb = [];
@@ -69,42 +68,33 @@ function board() {
 
             kb.push([{
                 text: `⛔ ${i}- ${n.name} ⏱ ${m}m`,
-                callback_data: `info_${i}`
+                callback_data: "none"
             }]);
         }
     }
-
-    kb.push([
-        { text: "⚡ PAY ALL", callback_data: "admin_payall" },
-        { text: "🔄 RESET", callback_data: "admin_reset" }
-    ]);
-
-    kb.push([
-        { text: "📊 STATUS", callback_data: "admin_status" }
-    ]);
 
     return kb;
 }
 
 // =====================
-// 🔄 UPDATE BOARD
+// 🔄 UPDATE TABLERO
 function updateBoard() {
 
-    if (!chatId || !messageId) return;
+    if (!chatId || !msgId) return;
 
     bot.editMessageText(
-`🎰 CASINO BINGO PRO
+`🎰 BINGO CASINO PRO
 
 💰 Total: $${db.total}
-🎯 Estado activo`, {
+🎯 Activo`, {
         chat_id: chatId,
-        message_id: messageId,
+        message_id: msgId,
         reply_markup: { inline_keyboard: board() }
     }).catch(()=>{});
 }
 
 // =====================
-// ⏱ TIMER 10 MIN
+// ⏱ TIMER
 function startTimer(n) {
 
     if (timers[n]) clearTimeout(timers[n]);
@@ -112,8 +102,6 @@ function startTimer(n) {
     db.numeros[n].start = Date.now();
 
     timers[n] = setTimeout(() => {
-
-        if (!db.numeros[n]) return;
 
         delete db.numeros[n];
 
@@ -124,32 +112,33 @@ function startTimer(n) {
 }
 
 // =====================
-// 🎰 START BINGO
-function startBingo() {
+// 🎯 RULETA ANIMADA
+function ruletaAnimada(nums, cb) {
 
-    let nums = Array.from({ length: 15 }, (_, i) => i + 1);
+    bot.sendMessage(chatId, "🎰 INICIANDO RULETA...");
 
-    bot.sendMessage(chatId, "🎉 INICIANDO RULETA FINAL...");
+    let text = "🎰 GIRANDO RULETA...\n\n";
 
-    let msg = "🎰 RULETA GIRANDO...\n\n";
-
-    bot.sendMessage(chatId, msg).then((m) => {
+    bot.sendMessage(chatId, text).then((m) => {
 
         let mid = m.message_id;
 
+        let i = 0;
+
         let interval = setInterval(() => {
 
-            let i = Math.floor(Math.random() * nums.length);
-            let pick = nums[i];
+            let pick = nums[Math.floor(Math.random() * nums.length)];
 
-            msg += `➡️ ${pick}\n`;
+            text += `➡️ ${pick}\n`;
 
-            bot.editMessageText(msg, {
+            bot.editMessageText(text, {
                 chat_id: chatId,
                 message_id: mid
             });
 
-        }, 700);
+            i++;
+
+        }, 600);
 
         setTimeout(() => {
 
@@ -157,34 +146,62 @@ function startBingo() {
 
             let winner = nums[Math.floor(Math.random() * nums.length)];
 
-            bot.editMessageText(
-`🎉 GANADOR FINAL
+            cb(winner, mid);
 
-🎰 Número: ${winner}
-🏆 CASINO TERMINADO`, {
-                chat_id: chatId,
-                message_id: mid
-            });
-
-        }, 9000);
+        }, 8000);
     });
+}
+
+// =====================
+// 🏆 ANUNCIO GANADOR
+function announceWinner(winner, mid) {
+
+    let userName = db.numeros[winner]?.name || "Sin registro";
+
+    let steps = [
+        "🎉 B I N G O 🎉",
+        "🎉 B I N G O 🎉🏆",
+        "🎉 B I N G O 🎉🏆🔥",
+        `🏆 GANADOR: ${winner}`,
+        `👤 ${userName}`
+    ];
+
+    let i = 0;
+
+    let interval = setInterval(() => {
+
+        bot.editMessageText(steps[i], {
+            chat_id: chatId,
+            message_id: mid
+        }).catch(()=>{});
+
+        i++;
+
+        if (i >= steps.length) {
+            clearInterval(interval);
+        }
+
+    }, 900);
 }
 
 // =====================
 // 🔥 CHECK SOLD OUT
 function checkSold() {
 
-    if (bingoStarted) return;
+    if (bingoActive) return;
 
     for (let i = 1; i <= 15; i++) {
         if (!db.numeros[i] || db.numeros[i].estado !== "pagado") return;
     }
 
-    bingoStarted = true;
+    bingoActive = true;
 
-    bot.sendMessage(chatId, "🎉 TODOS LOS NÚMEROS VENDIDOS");
+    let nums = Array.from({ length: 15 }, (_, i) => i + 1);
 
-    startBingo();
+    ruletaAnimada(nums, (winner, mid) => {
+
+        announceWinner(winner, mid);
+    });
 }
 
 // =====================
@@ -193,14 +210,12 @@ bot.onText(/\/bingo/, async (msg) => {
 
     chatId = msg.chat.id;
 
-    const sent = await bot.sendMessage(chatId,
-`🎰 CASINO BINGO
-
-💰 Total: $${db.total}`, {
+    let sent = await bot.sendMessage(chatId,
+`🎰 BINGO CASINO PRO`, {
         reply_markup: { inline_keyboard: board() }
     });
 
-    messageId = sent.message_id;
+    msgId = sent.message_id;
 });
 
 // =====================
@@ -209,12 +224,12 @@ bot.on("callback_query", (q) => {
 
     bot.answerCallbackQuery(q.id).catch(()=>{});
 
-    const d = q.data;
+    let d = q.data;
 
     // TOMAR
     if (d.startsWith("take_")) {
 
-        const n = d.split("_")[1];
+        let n = d.split("_")[1];
 
         if (db.numeros[n]) return;
 
@@ -229,7 +244,7 @@ bot.on("callback_query", (q) => {
         updateBoard();
 
         bot.sendMessage(chatId,
-`💰 PAGAR
+`💰 PAGA:
 Nequi 3123902322
 🎰 Número ${n}
 ⏱ 10 min`);
@@ -243,11 +258,7 @@ Nequi 3123902322
     if (d === "admin_payall") {
 
         for (let i = 1; i <= 15; i++) {
-            if (!db.numeros[i]) {
-                db.numeros[i] = { name: "ADMIN", estado: "pagado", start: Date.now() };
-            } else {
-                db.numeros[i].estado = "pagado";
-            }
+            db.numeros[i] = { name: "ADMIN", estado: "pagado", start: Date.now() };
         }
 
         db.total = 15 * 3000;
@@ -262,7 +273,7 @@ Nequi 3123902322
     if (d === "admin_reset") {
 
         db = { numeros: {}, total: 0 };
-        bingoStarted = false;
+        bingoActive = false;
 
         save();
         updateBoard();
@@ -275,7 +286,7 @@ Nequi 3123902322
 `📊 STATUS
 
 💰 Total: $${db.total}
-🎰 Ocupados: ${Object.keys(db.numeros).length}`);
+🎰 Activos: ${Object.keys(db.numeros).length}`);
     }
 });
 
@@ -285,11 +296,12 @@ bot.on("message", (msg) => {
 
     if (!msg.photo) return;
 
-    const file = msg.photo[msg.photo.length - 1].file_id;
+    let file = msg.photo[msg.photo.length - 1].file_id;
 
     let nums = [];
 
     for (let n in db.numeros) {
+
         if (db.numeros[n].name === user(msg.from)) {
             nums.push(n);
             db.numeros[n].estado = "pendiente";
@@ -300,15 +312,15 @@ bot.on("message", (msg) => {
 
     save();
 
-    bot.sendMessage(chatId, "🔍 COMPROBANDO PAGO...");
+    bot.sendMessage(chatId, "🔍 revisando pago...");
 
     bot.sendPhoto(chatId, file, {
-        caption: `📥 PAGO\n🎰 ${nums.join(", ")}`,
+        caption: `📥 Pago\n🎰 ${nums.join(", ")}`,
         reply_markup: {
             inline_keyboard: [
                 [
-                    { text: "🟢 APROBAR", callback_data: `ok_${nums.join("-")}` },
-                    { text: "🔴 RECHAZAR", callback_data: `no_${nums.join("-")}` }
+                    { text: "🟢 APROBAR", callback_data: "ok" },
+                    { text: "🔴 RECHAZAR", callback_data: "no" }
                 ]
             ]
         }
