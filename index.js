@@ -41,7 +41,7 @@ function getMinutesLeft(start) {
 }
 
 // =====================
-// 🎰 TABLERO (GRUPO LIMPIO)
+// 🎰 TABLERO
 function generarTablero() {
 
     let kb = [];
@@ -89,7 +89,7 @@ function updateBoard() {
 }
 
 // =====================
-// 🚀 INICIO BINGO
+// 🚀 INICIO
 bot.onText(/\/bingo/, async (msg) => {
 
     if (msg.from.id !== ADMIN_ID) return;
@@ -134,7 +134,7 @@ bot.on("callback_query", (q) => {
 });
 
 // =====================
-// 📸 COMPROBANTE (GRUPO SOLO BARRA + MENSAJE SIMPLE)
+// 📸 COMPROBANTE (GRUPO + BOTONES)
 bot.on("message", (msg) => {
 
     if (!msg.photo) return;
@@ -155,8 +155,7 @@ bot.on("message", (msg) => {
     let bar = ["⬜️⬜️⬜️⬜️⬜️","🟩⬜️⬜️⬜️⬜️","🟩🟩⬜️⬜️⬜️","🟩🟩🟩⬜️⬜️","🟩🟩🟩🟩⬜️","🟩🟩🟩🟩🟩"];
     let i = 0;
 
-    bot.sendMessage(chatId,
-`🔍 COMPROBANDO PAGO...`).then((m) => {
+    bot.sendMessage(chatId, "🔍 COMPROBANDO PAGO...").then((m) => {
 
         let id = m.message_id;
 
@@ -175,16 +174,9 @@ ${bar[i]}`, {
             if (i >= bar.length) {
                 clearInterval(interval);
 
-                // 👮 SOLO MENSAJE SIMPLE EN GRUPO (SIN BOTONES)
+                // 👥 GRUPO: BOTONES APROBAR/RECHAZAR
                 bot.sendMessage(chatId,
-`📸 PAGO RECIBIDO
-
-🎰 ${nums.join(", ")}
-👤 ${getUser(msg.from)}`);
-
-                // 🔐 ENVIAR A ADMIN PRIVADO CON BOTONES
-                bot.sendMessage(ADMIN_ID,
-`📸 PAGO PARA APROBAR
+`📸 PAGO EN REVISIÓN
 
 🎰 ${nums.join(", ")}
 👤 ${getUser(msg.from)}`, {
@@ -204,13 +196,14 @@ ${bar[i]}`, {
 });
 
 // =====================
-// 👮 SOLO ADMIN PRIVADO
+// 👮 CONTROL ADMIN (PRIVADO PERO AFECTA GRUPO)
 bot.on("callback_query", (q) => {
 
     if (q.from.id !== ADMIN_ID) return;
 
     let d = q.data;
 
+    // 🟢 APROBAR
     if (d.startsWith("ok_")) {
 
         let nums = d.split("_")[1].split("-");
@@ -222,9 +215,11 @@ bot.on("callback_query", (q) => {
         save();
         updateBoard();
 
-        bot.sendMessage(ADMIN_ID, "✅ APROBADO");
+        // ACTUALIZA GRUPO
+        bot.sendMessage(chatId, "✅ PAGO APROBADO");
     }
 
+    // 🔴 RECHAZAR
     if (d.startsWith("no_")) {
 
         let nums = d.split("_")[1].split("-");
@@ -234,12 +229,13 @@ bot.on("callback_query", (q) => {
         save();
         updateBoard();
 
-        bot.sendMessage(ADMIN_ID, "❌ RECHAZADO");
+        // ACTUALIZA GRUPO
+        bot.sendMessage(chatId, "❌ PAGO RECHAZADO");
     }
 });
 
 // =====================
-// 🎛 PANEL SOLO PRIVADO
+// 🎛 ADMIN PRIVADO
 bot.onText(/\/admin/, (msg) => {
 
     if (msg.from.id !== ADMIN_ID) return;
