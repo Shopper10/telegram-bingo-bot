@@ -90,16 +90,22 @@ function updateBoard() {
 }
 
 // =====================
-// 🎰 INICIO
+// 🚀 /bingo (RESET TOTAL)
 bot.onText(/\/bingo/, async (msg) => {
 
     if (msg.from.id !== ADMIN_ID) return;
 
     chatId = msg.chat.id;
+
+    // 🔥 RESET TOTAL
+    db.numeros = {};
+    db.total = 0;
     bingoIniciado = false;
 
+    save();
+
     const sent = await bot.sendMessage(chatId,
-`🎰 CASINO BINGO`, {
+`🎰 CASINO BINGO - NUEVA PARTIDA`, {
         reply_markup: generarTablero()
     });
 
@@ -246,7 +252,6 @@ bot.on("callback_query", (q) => {
 });
 
 // =====================
-// 🎰 FINAL AUTOMÁTICO
 function checkFull() {
 
     if (!bingoIniciado && Object.keys(db.numeros).length === 15) {
@@ -258,7 +263,6 @@ function checkFull() {
 }
 
 // =====================
-// 🎛 ADMIN SOLO PRIVADO
 bot.onText(/\/admin/, (msg) => {
 
     if (msg.from.id !== ADMIN_ID) return;
