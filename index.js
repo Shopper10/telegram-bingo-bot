@@ -33,7 +33,7 @@ function user(u) {
 }
 
 // =====================
-// ⏱️ TIEMPO EN MINUTOS
+// ⏱ 10 MIN EN MINUTOS
 function getMinutesLeft(start) {
     const limit = 10 * 60 * 1000;
     const diff = limit - (Date.now() - start);
@@ -41,32 +41,16 @@ function getMinutesLeft(start) {
 }
 
 // =====================
-// 📊 BARRA VISUAL
-function getBar(min) {
-
-    const total = 10;
-    const filled = Math.max(0, total - min);
-
-    let bar = "";
-
-    for (let i = 0; i < total; i++) {
-        bar += i < filled ? "🟩" : "⬜️";
-    }
-
-    return bar;
-}
-
-// =====================
-// 🎰 TABLERO CON BOTONES + BARRA
+// 🎰 TABLERO CON BOTONES
 function board() {
 
     let kb = [];
-    let alertMsg = false;
 
     for (let i = 1; i <= 15; i++) {
 
         const n = db.numeros[i];
 
+        // 🟢 DISPONIBLE
         if (!n) {
             kb.push([{
                 text: `🟢 ${i} - DISPONIBLE`,
@@ -75,21 +59,16 @@ function board() {
             continue;
         }
 
+        // ⛔ RESERVADO
         if (n.estado === "reservado") {
-
-            let min = getMinutesLeft(n.time);
-
-            if (min <= 0) continue;
-
-            if (min <= 2) alertMsg = true;
-
             kb.push([{
-                text: `⛔️ ${n.name} ⏱️ ${min}min ${getBar(min)}`,
+                text: `⛔️ ${n.name} ⏱️ ${getMinutesLeft(n.time)}min`,
                 callback_data: "wait"
             }]);
             continue;
         }
 
+        // 🔍 PENDIENTE
         if (n.estado === "pendiente") {
             kb.push([{
                 text: `🔍 ${n.name} COMPROBANDO`,
@@ -98,6 +77,7 @@ function board() {
             continue;
         }
 
+        // ✅ PAGADO
         if (n.estado === "pagado") {
             kb.push([{
                 text: `✅ ${n.name} PAGADO`,
@@ -106,16 +86,10 @@ function board() {
         }
     }
 
-    // 🔴 ALERTA GLOBAL
-    if (alertMsg && chatId) {
-        bot.sendMessage(chatId, "⚠️ HAY JUGADORES A PUNTO DE EXPIRAR (2 MIN O MENOS)");
-    }
-
     return { inline_keyboard: kb };
 }
 
 // =====================
-// 🔄 UPDATE TABLERO
 function updateBoard() {
 
     if (!chatId || !messageId) return;
@@ -128,34 +102,7 @@ function updateBoard() {
 }
 
 // =====================
-// 🧹 AUTO LIBERACIÓN
-function autoRelease() {
-
-    let changed = false;
-
-    for (let i in db.numeros) {
-
-        let n = db.numeros[i];
-
-        if (n.estado === "reservado") {
-
-            let min = getMinutesLeft(n.time);
-
-            if (min <= 0) {
-                delete db.numeros[i];
-                changed = true;
-            }
-        }
-    }
-
-    if (changed) {
-        save();
-        updateBoard();
-    }
-}
-
-// =====================
-// 🚀 START
+// 🚀 INICIAR TABLERO
 bot.onText(/\/bingo/, async (msg) => {
 
     chatId = msg.chat.id;
@@ -169,7 +116,7 @@ bot.onText(/\/bingo/, async (msg) => {
 });
 
 // =====================
-// 🎯 COMPRA
+// 🎯 COMPRA DE NÚMEROS
 bot.on("callback_query", (q) => {
 
     bot.answerCallbackQuery(q.id).catch(()=>{});
@@ -198,7 +145,7 @@ bot.on("callback_query", (q) => {
 });
 
 // =====================
-// 📸 PAGO
+// 📸 COMPROBANTE + BARRA SOLO AQUÍ
 bot.on("message", (msg) => {
 
     if (!msg.photo) return;
@@ -217,27 +164,44 @@ bot.on("message", (msg) => {
 
     save();
 
-    bot.sendMessage(chatId, "🔍 COMPROBANDO PAGOS...");
+    bot.sendMessage(chatId, "🔍 COMPROBANDO PAGO...");
 
-    setTimeout(() => {
+    // 📊 BARRA SOLO EN ESTE PROCESO
+    let bar = [
+        "⬜️⬜️⬜️⬜️⬜️",
+        "🟩⬜️⬜️⬜️⬜️",
+        "🟩🟩⬜️⬜️⬜️",
+        "🟩🟩🟩⬜️⬜️",
+        "🟩🟩🟩🟩⬜️",
+        "🟩🟩🟩🟩🟩"
+    ];
 
-        nums.forEach(n => {
-            db.numeros[n].estado = "pagado";
-        });
+    let i = 0;
 
-        save();
-        updateBoard();
+    let interval = setInterval(() => {
 
-        bot.sendMessage(chatId, "✅ PAGOS APROBADOS");
+        bot.sendMessage(chatId,
+`🔍 VERIFICANDO PAGO...
 
-    }, 3000);
+${bar[i]}
+
+🎰 Números: ${nums.join(", ")}`);
+
+        i++;
+
+        if (i >= bar.length) {
+
+            clearInterval(interval);
+
+            nums.forEach(n => {
+                db.numeros[n].estado = "pagado";
+            });
+
+            save();
+            updateBoard();
+
+            bot.sendMessage(chatId, "✅ PAGO APROBADO ✔");
+        }
+
+    }, 700);
 });
-
-// =====================
-// 🔁 LOOP SISTEMA
-setInterval(() => {
-
-    autoRelease();
-    updateBoard();
-
-}, 5000);
