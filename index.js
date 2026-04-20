@@ -57,7 +57,7 @@ function formatTiempo(ms) {
 }
 
 // =====================
-// TABLERO (FAST)
+// TABLERO RÁPIDO
 // =====================
 function generarTablero() {
 
@@ -77,11 +77,11 @@ function generarTablero() {
 
                 let restante = 600000 - (Date.now() - startTimes[i]);
 
-                text = `⛔ ${i} - ${u} ⏱ ${formatTiempo(restante)}`;
+                text = `⛔ ${i} ${u} ⏱ ${formatTiempo(restante)}`;
             }
 
             if (item.estado === "pagado") {
-                text = `✅ ${i} - ${u}`;
+                text = `✅ ${i} ${u}`;
             }
         }
 
@@ -92,7 +92,7 @@ function generarTablero() {
 }
 
 // =====================
-// REPOST TABLERO (IMPORTANTE)
+// REPINTAR TABLERO
 // =====================
 function repostTablero() {
 
@@ -128,8 +128,8 @@ function iniciarTimer(num) {
         const user = item.user.name;
 
         delete numeros[num];
-        delete timers[num];
         delete startTimes[num];
+        delete timers[num];
 
         guardarDatos();
 
@@ -143,25 +143,24 @@ function iniciarTimer(num) {
 }
 
 // =====================
-// LOOP LIGERO (SIN LAG)
+// AUTO UPDATE TABLERO
 // =====================
 setInterval(() => {
 
-    if (tableroChatId && tableroMessageId) {
+    if (!tableroChatId || !tableroMessageId) return;
 
-        bot.editMessageReplyMarkup(
-            { inline_keyboard: generarTablero() },
-            {
-                chat_id: tableroChatId,
-                message_id: tableroMessageId
-            }
-        ).catch(() => {});
-    }
+    bot.editMessageReplyMarkup(
+        { inline_keyboard: generarTablero() },
+        {
+            chat_id: tableroChatId,
+            message_id: tableroMessageId
+        }
+    ).catch(() => {});
 
-}, 5000);
+}, 6000);
 
 // =====================
-// START
+// START BOT
 // =====================
 cargarDatos();
 
@@ -182,7 +181,7 @@ bot.onText(/\/bingo/, async (msg) => {
 });
 
 // =====================
-// CALLBACK (TODO EN UNO)
+// CALLBACKS (TODO EN UNO)
 // =====================
 bot.on('callback_query', (query) => {
 
@@ -241,7 +240,7 @@ bot.on('callback_query', (query) => {
 
         bot.sendMessage(tableroChatId, "✅ CONFIRMADO ✔");
 
-        repostTablero(); // 🔥 IMPORTANTE
+        repostTablero();
         return;
     }
 
@@ -259,13 +258,13 @@ bot.on('callback_query', (query) => {
 
         bot.sendMessage(tableroChatId, "❌ RECHAZADO");
 
-        repostTablero(); // 🔥 IMPORTANTE
+        repostTablero();
         return;
     }
 });
 
 // =====================
-// FOTO (RÁPIDO + ESTABLE)
+// FOTO (ESTABLE Y RÁPIDO)
 // =====================
 bot.on('message', (msg) => {
 
