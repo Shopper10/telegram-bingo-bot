@@ -16,6 +16,7 @@ const DB_FILE = "./data.json";
 let db = { numeros: {}, total: 0 };
 let chatId = null;
 let messageId = null;
+let bingoIniciado = false;
 
 // =====================
 function load() {
@@ -41,7 +42,7 @@ function getMinutesLeft(start) {
 }
 
 // =====================
-// 🎰 TABLERO
+// 🎰 TABLERO LIMPIO
 function generarTablero() {
 
     let kb = [];
@@ -51,22 +52,20 @@ function generarTablero() {
         const item = db.numeros[i];
 
         if (!item) {
-            kb.push([{ text: `🟢 ${i} - DISPONIBLE`, callback_data: `buy_${i}` }]);
+            kb.push([{ text: `🟢 ${i}`, callback_data: `buy_${i}` }]);
             continue;
         }
 
-        if (item.estado === "reservado") {
-            kb.push([{ text: `⛔️ ${i} - ${item.name} ⏱ ${getMinutesLeft(item.time)}min`, callback_data: "wait" }]);
-            continue;
-        }
-
-        if (item.estado === "pendiente") {
-            kb.push([{ text: `🔍 ${i} - ${item.name} COMPROBANDO`, callback_data: "wait" }]);
+        if (item.estado === "reservado" || item.estado === "pendiente") {
+            kb.push([{
+                text: `⛔️ ${item.name} ⏱ ${getMinutesLeft(item.time)}min`,
+                callback_data: "wait"
+            }]);
             continue;
         }
 
         if (item.estado === "pagado") {
-            kb.push([{ text: `✅ ${i} - ${item.name} PAGADO`, callback_data: "wait" }]);
+            kb.push([{ text: `✅ ${item.name}`, callback_data: "wait" }]);
         }
     }
 
@@ -86,15 +85,18 @@ function updateBoard() {
         message_id: messageId,
         reply_markup: generarTablero()
     }).catch(()=>{});
+
+    checkFull();
 }
 
 // =====================
-// 🚀 INICIO
+// 🎰 INICIO
 bot.onText(/\/bingo/, async (msg) => {
 
     if (msg.from.id !== ADMIN_ID) return;
 
     chatId = msg.chat.id;
+    bingoIniciado = false;
 
     const sent = await bot.sendMessage(chatId,
 `🎰 CASINO BINGO`, {
@@ -134,7 +136,7 @@ bot.on("callback_query", (q) => {
 });
 
 // =====================
-// 📸 COMPROBANTE (GRUPO + BOTONES)
+// 📸 FOTO + BARRA
 bot.on("message", (msg) => {
 
     if (!msg.photo) return;
@@ -152,7 +154,15 @@ bot.on("message", (msg) => {
 
     save();
 
-    let bar = ["⬜️⬜️⬜️⬜️⬜️","🟩⬜️⬜️⬜️⬜️","🟩🟩⬜️⬜️⬜️","🟩🟩🟩⬜️⬜️","🟩🟩🟩🟩⬜️","🟩🟩🟩🟩🟩"];
+    const bar = [
+        "⬜️⬜️⬜️⬜️⬜️",
+        "🟩⬜️⬜️⬜️⬜️",
+        "🟩🟩⬜️⬜️⬜️",
+        "🟩🟩🟩⬜️⬜️",
+        "🟩🟩🟩🟩⬜️",
+        "🟩🟩🟩🟩🟩"
+    ];
+
     let i = 0;
 
     bot.sendMessage(chatId, "🔍 COMPROBANDO PAGO...").then((m) => {
@@ -172,11 +182,16 @@ ${bar[i]}`, {
             i++;
 
             if (i >= bar.length) {
+
                 clearInterval(interval);
 
-                // 👥 GRUPO: BOTONES APROBAR/RECHAZAR
                 bot.sendMessage(chatId,
-`📸 PAGO EN REVISIÓN
+`📸 PAGO RECIBIDO
+🎰 ${nums.join(", ")}
+👤 ${getUser(msg.from)}`);
+
+                bot.sendMessage(ADMIN_ID,
+`📸 APROBAR PAGO
 
 🎰 ${nums.join(", ")}
 👤 ${getUser(msg.from)}`, {
@@ -196,14 +211,13 @@ ${bar[i]}`, {
 });
 
 // =====================
-// 👮 CONTROL ADMIN (PRIVADO PERO AFECTA GRUPO)
+// 👮 ADMIN CONTROL
 bot.on("callback_query", (q) => {
 
     if (q.from.id !== ADMIN_ID) return;
 
     let d = q.data;
 
-    // 🟢 APROBAR
     if (d.startsWith("ok_")) {
 
         let nums = d.split("_")[1].split("-");
@@ -215,11 +229,9 @@ bot.on("callback_query", (q) => {
         save();
         updateBoard();
 
-        // ACTUALIZA GRUPO
-        bot.sendMessage(chatId, "✅ PAGO APROBADO");
+        bot.sendMessage(ADMIN_ID, "✅ APROBADO");
     }
 
-    // 🔴 RECHAZAR
     if (d.startsWith("no_")) {
 
         let nums = d.split("_")[1].split("-");
@@ -229,19 +241,30 @@ bot.on("callback_query", (q) => {
         save();
         updateBoard();
 
-        // ACTUALIZA GRUPO
-        bot.sendMessage(chatId, "❌ PAGO RECHAZADO");
+        bot.sendMessage(ADMIN_ID, "❌ RECHAZADO");
     }
 });
 
 // =====================
-// 🎛 ADMIN PRIVADO
+// 🎰 FINAL AUTOMÁTICO
+function checkFull() {
+
+    if (!bingoIniciado && Object.keys(db.numeros).length === 15) {
+
+        bingoIniciado = true;
+
+        bot.sendMessage(chatId, "🎰 INICIO DE BINGO");
+    }
+}
+
+// =====================
+// 🎛 ADMIN SOLO PRIVADO
 bot.onText(/\/admin/, (msg) => {
 
     if (msg.from.id !== ADMIN_ID) return;
 
     if (msg.chat.type !== "private") {
-        bot.sendMessage(msg.chat.id, "❌ Solo en privado");
+        bot.sendMessage(msg.chat.id, "❌ Solo privado");
         return;
     }
 
@@ -249,4 +272,4 @@ bot.onText(/\/admin/, (msg) => {
 `🎛 PANEL ADMIN
 
 💰 Total: $${db.total}`);
-}); 
+});
