@@ -33,7 +33,7 @@ function user(u) {
 }
 
 // =====================
-// ⏱ 10 MIN EN MINUTOS
+// ⏱ 10 MIN
 function getMinutesLeft(start) {
     const limit = 10 * 60 * 1000;
     const diff = limit - (Date.now() - start);
@@ -41,7 +41,7 @@ function getMinutesLeft(start) {
 }
 
 // =====================
-// 🎰 TABLERO CON BOTONES
+// 🎰 TABLERO BOTONES
 function board() {
 
     let kb = [];
@@ -50,7 +50,6 @@ function board() {
 
         const n = db.numeros[i];
 
-        // 🟢 DISPONIBLE
         if (!n) {
             kb.push([{
                 text: `🟢 ${i} - DISPONIBLE`,
@@ -59,7 +58,6 @@ function board() {
             continue;
         }
 
-        // ⛔ RESERVADO
         if (n.estado === "reservado") {
             kb.push([{
                 text: `⛔️ ${n.name} ⏱️ ${getMinutesLeft(n.time)}min`,
@@ -68,7 +66,6 @@ function board() {
             continue;
         }
 
-        // 🔍 PENDIENTE
         if (n.estado === "pendiente") {
             kb.push([{
                 text: `🔍 ${n.name} COMPROBANDO`,
@@ -77,7 +74,6 @@ function board() {
             continue;
         }
 
-        // ✅ PAGADO
         if (n.estado === "pagado") {
             kb.push([{
                 text: `✅ ${n.name} PAGADO`,
@@ -102,7 +98,7 @@ function updateBoard() {
 }
 
 // =====================
-// 🚀 INICIAR TABLERO
+// 🚀 START
 bot.onText(/\/bingo/, async (msg) => {
 
     chatId = msg.chat.id;
@@ -116,7 +112,7 @@ bot.onText(/\/bingo/, async (msg) => {
 });
 
 // =====================
-// 🎯 COMPRA DE NÚMEROS
+// 🎯 COMPRA
 bot.on("callback_query", (q) => {
 
     bot.answerCallbackQuery(q.id).catch(()=>{});
@@ -145,7 +141,7 @@ bot.on("callback_query", (q) => {
 });
 
 // =====================
-// 📸 COMPROBANTE + BARRA SOLO AQUÍ
+// 📸 COMPROBANTE (1 SOLO MENSAJE + BARRA EDITADA)
 bot.on("message", (msg) => {
 
     if (!msg.photo) return;
@@ -153,7 +149,6 @@ bot.on("message", (msg) => {
     let nums = [];
 
     for (let n in db.numeros) {
-
         if (db.numeros[n].name === user(msg.from)) {
             db.numeros[n].estado = "pendiente";
             nums.push(n);
@@ -164,9 +159,6 @@ bot.on("message", (msg) => {
 
     save();
 
-    bot.sendMessage(chatId, "🔍 COMPROBANDO PAGO...");
-
-    // 📊 BARRA SOLO EN ESTE PROCESO
     let bar = [
         "⬜️⬜️⬜️⬜️⬜️",
         "🟩⬜️⬜️⬜️⬜️",
@@ -178,30 +170,45 @@ bot.on("message", (msg) => {
 
     let i = 0;
 
-    let interval = setInterval(() => {
+    // 🔥 SOLO 1 MENSAJE
+    bot.sendMessage(chatId, "🔍 COMPROBANDO PAGO...\n⬜️⬜️⬜️⬜️⬜️").then((m) => {
 
-        bot.sendMessage(chatId,
-`🔍 VERIFICANDO PAGO...
+        let progressId = m.message_id;
+
+        let interval = setInterval(() => {
+
+            bot.editMessageText(
+`🔍 COMPROBANDO PAGO...
 
 ${bar[i]}
 
-🎰 Números: ${nums.join(", ")}`);
+🎰 Números: ${nums.join(", ")}`, {
+                chat_id: chatId,
+                message_id: progressId
+            }).catch(()=>{});
 
-        i++;
+            i++;
 
-        if (i >= bar.length) {
+            if (i >= bar.length) {
 
-            clearInterval(interval);
+                clearInterval(interval);
 
-            nums.forEach(n => {
-                db.numeros[n].estado = "pagado";
-            });
+                nums.forEach(n => {
+                    db.numeros[n].estado = "pagado";
+                });
 
-            save();
-            updateBoard();
+                save();
+                updateBoard();
 
-            bot.sendMessage(chatId, "✅ PAGO APROBADO ✔");
-        }
+                bot.editMessageText(
+`✅ PAGO APROBADO ✔
 
-    }, 700);
+🎰 Números: ${nums.join(", ")}`, {
+                    chat_id: chatId,
+                    message_id: progressId
+                });
+            }
+
+        }, 700);
+    });
 });
