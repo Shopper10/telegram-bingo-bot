@@ -7,19 +7,12 @@ if (global.__RUN__) process.exit(0);
 global.__RUN__ = true;
 
 const bot = new TelegramBot(token, {
-    polling: { autoStart: true, interval: 2000 }
+    polling: { autoStart: true, interval: 1500 }
 });
 
-console.log("🎰 CASINO TEXT CLEAN ONLINE");
-
-// =====================
 const DB_FILE = "./data.json";
 
-let db = {
-    numeros: {},
-    total: 0
-};
-
+let db = { numeros: {}, total: 0 };
 let chatId = null;
 let messageId = null;
 let bingoActive = false;
@@ -30,11 +23,9 @@ function load() {
         db = JSON.parse(fs.readFileSync(DB_FILE));
     }
 }
-
 function save() {
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 }
-
 load();
 
 // =====================
@@ -43,10 +34,18 @@ function user(u) {
 }
 
 // =====================
-// 🎰 TABLERO EN TEXTO (EXACTO COMO QUIERES)
+// ⏱ TIMER SEGUNDOS
+function getSecondsLeft(start) {
+    const limit = 10 * 60 * 1000;
+    const diff = limit - (Date.now() - start);
+    return diff > 0 ? Math.floor(diff / 1000) : 0;
+}
+
+// =====================
+// 🎰 BOTONES TABLERO
 function buildBoard() {
 
-    let text = `🎰 CASINO BINGO\n\n`;
+    let kb = [];
 
     for (let i = 1; i <= 15; i++) {
 
@@ -54,32 +53,43 @@ function buildBoard() {
 
         // 🟢 DISPONIBLE
         if (!n) {
-            text += `🟢 ${i} - DISPONIBLE\n`;
+            kb.push([{
+                text: `🟢 ${i} - DISPONIBLE`,
+                callback_data: `buy_${i}`
+            }]);
             continue;
         }
 
         // ⛔ RESERVADO
         if (n.estado === "reservado") {
-            text += `⛔️ ${n.name} ⏱️ 10min\n`;
+            kb.push([{
+                text: `⛔️ ${n.name} ⏱️ ${getSecondsLeft(n.time)}s`,
+                callback_data: "wait"
+            }]);
             continue;
         }
 
-        // ⏳ PENDIENTE
+        // 🔍 PENDIENTE
         if (n.estado === "pendiente") {
-            text += `🔍 ${n.name} COMPROBANDO...\n`;
+            kb.push([{
+                text: `🔍 ${n.name} COMPROBANDO`,
+                callback_data: "wait"
+            }]);
             continue;
         }
 
         // ✅ PAGADO
         if (n.estado === "pagado") {
-            text += `✅ ${n.name} PAGADO\n`;
-            continue;
+            kb.push([{
+                text: `✅ ${n.name} PAGADO`,
+                callback_data: "wait"
+            }]);
         }
     }
 
-    text += `\n💰 TOTAL: $${db.total}`;
-
-    return text;
+    return {
+        inline_keyboard: kb
+    };
 }
 
 // =====================
@@ -87,14 +97,15 @@ function updateBoard() {
 
     if (!chatId || !messageId) return;
 
-    bot.editMessageText(buildBoard(), {
+    bot.editMessageText(`🎰 CASINO BINGO\n\n💰 Total: $${db.total}`, {
         chat_id: chatId,
-        message_id: messageId
+        message_id: messageId,
+        reply_markup: buildBoard()
     }).catch(()=>{});
 }
 
 // =====================
-// 🔥 SOLD OUT CHECK
+// 🔥 SOLD OUT
 function checkSoldOut() {
 
     if (bingoActive) return;
@@ -106,7 +117,7 @@ function checkSoldOut() {
     bingoActive = true;
 
     bot.sendMessage(chatId,
-`🎉🔥 TODOS LOS NÚMEROS VENDIDOS 🔥🎉
+`🎉🔥 SOLD OUT COMPLETO 🔥🎉
 
 🚀 INICIANDO BINGO...`);
 
@@ -114,7 +125,6 @@ function checkSoldOut() {
 }
 
 // =====================
-// 🎰 BINGO FINAL
 function startBingo() {
 
     let nums = Array.from({ length: 15 }, (_, i) => i + 1);
@@ -125,38 +135,38 @@ function startBingo() {
     bot.sendMessage(chatId,
 `🏆 BINGO FINAL 🏆
 
-🎰 Número ganador: ${winner}
-👤 ${name}
-
-🎉 FELICIDADES!`);
+🎰 ${winner}
+👤 ${name}`);
 }
 
 // =====================
-// 🚀 INICIAR TABLERO
+// 🚀 START
 bot.onText(/\/bingo/, async (msg) => {
 
     chatId = msg.chat.id;
 
-    const sent = await bot.sendMessage(chatId, buildBoard());
+    const sent = await bot.sendMessage(chatId,
+`🎰 CASINO BINGO`, {
+        reply_markup: buildBoard()
+    });
 
     messageId = sent.message_id;
 });
 
 // =====================
-// 🎯 COMPRA DE NÚMEROS (SIN BOTONES)
-bot.on("message", (msg) => {
+// 🎯 CLICK BOTONES
+bot.on("callback_query", (q) => {
 
-    if (!msg.text) return;
+    bot.answerCallbackQuery(q.id).catch(()=>{});
 
-    // ejemplo simple: escribir "1", "2", etc
-    let num = parseInt(msg.text);
+    if (!q.data.startsWith("buy_")) return;
 
-    if (isNaN(num) || num < 1 || num > 15) return;
+    let n = q.data.split("_")[1];
 
-    if (db.numeros[num]) return;
+    if (db.numeros[n]) return;
 
-    db.numeros[num] = {
-        name: user(msg.from),
+    db.numeros[n] = {
+        name: user(q.from),
         estado: "reservado",
         time: Date.now()
     };
@@ -167,15 +177,13 @@ bot.on("message", (msg) => {
     updateBoard();
 
     bot.sendMessage(chatId,
-`💰 NÚMERO RESERVADO
-🎰 ${num}
-👤 ${user(msg.from)}
-
-📸 Envía comprobante`);
+`💰 RESERVADO
+🎰 ${n}
+⏱️ 10 MIN`);
 });
 
 // =====================
-// 📸 COMPROBANTE
+// 📸 PAGO
 bot.on("message", (msg) => {
 
     if (!msg.photo) return;
@@ -210,3 +218,11 @@ bot.on("message", (msg) => {
 
     }, 3000);
 });
+
+// =====================
+// 🔁 LOOP TIMER + UPDATE
+setInterval(() => {
+
+    updateBoard();
+
+}, 2000);
