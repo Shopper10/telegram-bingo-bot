@@ -249,4 +249,4 @@ bot.onText(/\/admin/, (msg) => {
 `🎛 PANEL ADMIN
 
 💰 Total: $${db.total}`);
-});
+}); 
