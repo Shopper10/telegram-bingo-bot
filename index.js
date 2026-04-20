@@ -251,9 +251,28 @@ bot.on("message", (msg) => {
             inline_keyboard: [
                 [
                     { text: "🟢 APROBAR", callback_data: `ok_${nums.join("-")}` },
-                    { text: "🔴 RECHAZAR", callback_data: `no_${nums.join("-")}` }
-                ]
-            ]
-        }
-    });
+                    { text: "🔴 RECHAZAR", callback_data: `no_${nums.const TelegramBot = require("node-telegram-bot-api");
+
+const token = process.env.TOKEN;
+
+// 🔥 ANTI DOBLE INSTANCIA REAL
+if (global.__BOT_ACTIVE__) {
+    console.log("BOT YA ACTIVO - SALIENDO");
+    process.exit(0);
+}
+global.__BOT_ACTIVE__ = true;
+
+// 🔥 BORRA WEBHOOKS ANTES DE POLLING (CLAVE)
+const bot = new TelegramBot(token);
+
+bot.deleteWebHook().then(() => {
+    console.log("WEBHOOK LIMPIADO");
+    startBot();
 });
+
+function startBot() {
+
+    bot.startPolling();
+
+    console.log("BOT INICIADO LIMPIO");
+}
