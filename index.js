@@ -4,15 +4,14 @@ const fs = require("fs");
 const token = process.env.TOKEN;
 const ADMIN_ID = Number(process.env.ADMIN_ID);
 
-// 🔥 evitar duplicados Railway
-if (global.__RUN__) process.exit(0);
-global.__RUN__ = true;
+if (global.__RUNNING__) process.exit(0);
+global.__RUNNING__ = true;
 
 const bot = new TelegramBot(token, {
     polling: { autoStart: true, interval: 2000 }
 });
 
-console.log("🎰 CASINO CLEAN ONLINE");
+console.log("🎰 CASINO PRIVADO ADMIN ONLINE");
 
 // =====================
 const DB_FILE = "./data.json";
@@ -46,7 +45,7 @@ function user(u) {
 }
 
 // =====================
-// 🧼 TABLERO LIMPIO (SIN BOTONES EXTRA NUNCA)
+// 🧼 TABLERO SOLO USUARIOS (SIN BOTONES ADMIN)
 function boardUser() {
 
     let kb = [];
@@ -75,7 +74,6 @@ function boardUser() {
 }
 
 // =====================
-// 🔄 ACTUALIZAR TABLERO
 function updateBoard() {
 
     if (!chatId || !messageId) return;
@@ -110,7 +108,7 @@ function startTimer(n) {
 }
 
 // =====================
-// 🔥 CHECK SOLD OUT
+// 🔥 SOLD OUT CHECK
 function checkSoldOut() {
 
     if (bingoActive) return;
@@ -124,36 +122,27 @@ function checkSoldOut() {
     bot.sendMessage(chatId,
 `🎉🔥 NÚMEROS VENDIDOS COMPLETOS 🔥🎉
 
-🎰 TODOS LOS NÚMEROS FUERON VENDIDOS
 🚀 INICIANDO BINGO...`);
 
-    setTimeout(() => {
-        startBingo();
-    }, 3000);
+    setTimeout(() => startBingo(), 3000);
 }
 
 // =====================
-// 🎰 INICIO BINGO (SIMPLIFICADO)
+// 🎰 BINGO FINAL
 function startBingo() {
 
     let nums = Array.from({ length: 15 }, (_, i) => i + 1);
 
-    bot.sendMessage(chatId, "🎰 INICIANDO BINGO... SUERTE 🍀");
+    let winner = nums[Math.floor(Math.random() * nums.length)];
+    let name = db.numeros[winner]?.name || "Sin registro";
 
-    setTimeout(() => {
-
-        let winner = nums[Math.floor(Math.random() * nums.length)];
-        let name = db.numeros[winner]?.name || "Sin registro";
-
-        bot.sendMessage(chatId,
+    bot.sendMessage(chatId,
 `🏆 BINGO FINAL 🏆
 
 🎰 Número ganador: ${winner}
 👤 ${name}
 
 🎉 FELICIDADES!`);
-
-    }, 4000);
 }
 
 // =====================
@@ -171,7 +160,7 @@ bot.onText(/\/bingo/, async (msg) => {
 });
 
 // =====================
-// 🎯 CALLBACKS (SIN BOTONES ADMIN EN PÚBLICO)
+// 🎯 CALLBACKS USUARIOS
 bot.on("callback_query", (q) => {
 
     bot.answerCallbackQuery(q.id).catch(()=>{});
@@ -202,12 +191,10 @@ Nequi 3123902322
 
         return;
     }
-
-    // ❌ todo lo demás ignorado en público
 });
 
 // =====================
-// 📸 COMPROBANTE PAGO
+// 📸 PAGO
 bot.on("message", (msg) => {
 
     if (!msg.photo) return;
@@ -231,6 +218,80 @@ bot.on("message", (msg) => {
     bot.sendMessage(chatId, "🔍 COMPROBANDO PAGO...");
 
     bot.sendPhoto(chatId, file, {
-        caption: `📥 COMPROBANTE\n🎰 ${nums.join(", ")}`
+        caption: `📥 PAGO\n🎰 ${nums.join(", ")}`
     });
+
+    // simular aprobación automática para demo
+    setTimeout(() => {
+
+        nums.forEach(n => {
+            db.numeros[n].estado = "pagado";
+            db.total += 3000;
+        });
+
+        save();
+        updateBoard();
+        checkSoldOut();
+
+        bot.sendMessage(chatId, "✅ PAGO APROBADO");
+
+    }, 3000);
+});
+
+// =====================
+// 🛠 ADMIN SOLO EN BOT PRIVADO (SIN GRUPO)
+
+function isPrivate(msg) {
+    return msg.chat.type === "private";
+}
+
+// ⚡ PAYALL
+bot.onText(/\/payall/, (msg) => {
+
+    if (!isPrivate(msg)) return;
+    if (msg.from.id !== ADMIN_ID) return;
+
+    for (let i = 1; i <= 15; i++) {
+        db.numeros[i] = {
+            name: "ADMIN",
+            estado: "pagado",
+            start: Date.now()
+        };
+    }
+
+    db.total = 15 * 3000;
+
+    save();
+    updateBoard();
+    checkSoldOut();
+
+    bot.sendMessage(msg.chat.id, "⚡ TODOS PAGADOS");
+});
+
+// 🔄 RESET
+bot.onText(/\/reset/, (msg) => {
+
+    if (!isPrivate(msg)) return;
+    if (msg.from.id !== ADMIN_ID) return;
+
+    db = { numeros: {}, total: 0 };
+    bingoActive = false;
+
+    save();
+    updateBoard();
+
+    bot.sendMessage(msg.chat.id, "🔄 REINICIADO");
+});
+
+// 📊 STATUS
+bot.onText(/\/status/, (msg) => {
+
+    if (!isPrivate(msg)) return;
+    if (msg.from.id !== ADMIN_ID) return;
+
+    bot.sendMessage(msg.chat.id,
+`📊 STATUS
+
+💰 Total: $${db.total}
+🎰 Activos: ${Object.keys(db.numeros).length}`);
 });
