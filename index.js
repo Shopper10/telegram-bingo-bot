@@ -4,13 +4,11 @@ const fs = require("fs");
 const token = process.env.TOKEN;
 const ADMIN_ID = Number(process.env.ADMIN_ID);
 
-const bot = new TelegramBot(token, {
-    polling: { autoStart: true, interval: 1500 }
-});
+const bot = new TelegramBot(token, { polling: true });
 
-let db = { numeros: {}, total: 0 };
+let db = { numeros: {} };
 let chatId = null;
-let boardMessageId = null;
+let boardId = null;
 
 // =====================
 function save() {
@@ -18,12 +16,12 @@ function save() {
 }
 
 // =====================
-function getUser(u) {
+function user(u) {
     return u.username ? `@${u.username}` : u.first_name;
 }
 
 // =====================
-// ⏱ TIEMPO DINÁMICO
+// ⏱ TIEMPO REAL (NO SE GUARDA, SE CALCULA)
 function timeLeft(start) {
 
     const diff = 10 * 60 * 1000 - (Date.now() - start);
@@ -37,7 +35,7 @@ function timeLeft(start) {
 }
 
 // =====================
-// 🎰 TABLERO (GRUPO)
+// 🎰 TABLERO
 function board() {
 
     let kb = [];
@@ -52,15 +50,7 @@ function board() {
         }
 
         if (n.estado === "reservado") {
-            kb.push([{
-                text: `⛔️ ${n.name} ⏱ ${timeLeft(n.time)}`,
-                callback_data: "none"
-            }]);
-            continue;
-        }
-
-        if (n.estado === "pendiente") {
-            kb.push([{ text: `🔍 ${n.name}`, callback_data: "none" }]);
+            kb.push([{ text: `⛔️ ${n.name} ⏱ ${timeLeft(n.time)}`, callback_data: "none" }]);
             continue;
         }
 
@@ -73,127 +63,92 @@ function board() {
 }
 
 // =====================
-// 🚀 /bingo (SOLO ADMIN EN GRUPO)
+// 🚀 /bingo
 bot.onText(/\/bingo/, async (msg) => {
 
     if (msg.from.id !== ADMIN_ID) return;
 
     chatId = msg.chat.id;
-
     db.numeros = {};
-    db.total = 0;
 
     save();
 
-    const sent = await bot.sendMessage(chatId,
-`🎰 BINGO INICIADO`, {
+    const sent = await bot.sendMessage(chatId, "🎰 BINGO", {
         reply_markup: board()
     });
 
-    boardMessageId = sent.message_id;
+    boardId = sent.message_id;
 });
 
 // =====================
-// 🎯 COMPRA
+// 🔥 BOTONES (SOLO UNO - FIX CRÍTICO)
 bot.on("callback_query", (q) => {
 
     bot.answerCallbackQuery(q.id).catch(()=>{});
 
-    if (!q.data.startsWith("buy_")) return;
+    if (!chatId) return;
 
-    let n = q.data.split("_")[1];
+    const d = q.data;
 
-    if (db.numeros[n]) return;
+    // =====================
+    if (d.startsWith("buy_")) {
 
-    db.numeros[n] = {
-        name: getUser(q.from),
-        estado: "reservado",
-        time: Date.now()
-    };
+        const n = d.split("_")[1];
 
-    db.total += 3000;
+        if (db.numeros[n]) return;
 
-    save();
+        db.numeros[n] = {
+            name: user(q.from),
+            estado: "reservado",
+            time: Date.now()
+        };
 
-    refreshBoard();
-});
+        save();
 
-// =====================
-// 📸 PAGO
-bot.on("message", (msg) => {
+        refresh();
 
-    if (!msg.photo) return;
-
-    let nums = [];
-
-    for (let n in db.numeros) {
-
-        if (db.numeros[n].name === getUser(msg.from)) {
-            db.numeros[n].estado = "pendiente";
-            nums.push(n);
-        }
+        return;
     }
 
-    if (!nums.length) return;
+    // =====================
+    if (d.startsWith("ok_") && q.from.id === ADMIN_ID) {
 
-    save();
-
-    bot.sendMessage(chatId,
-`📸 EN REVISIÓN: ${nums.join(", ")}`, {
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: "🟢 APROBAR", callback_data: `ok_${nums.join("-")}` },
-                    { text: "🔴 RECHAZAR", callback_data: `no_${nums.join("-")}` }
-                ]
-            ]
-        }
-    });
-});
-
-// =====================
-// 👮 ADMIN
-bot.on("callback_query", (q) => {
-
-    if (q.from.id !== ADMIN_ID) return;
-
-    if (q.data.startsWith("ok_")) {
-
-        let nums = q.data.split("_")[1].split("-");
+        let nums = d.split("_")[1].split("-");
 
         nums.forEach(n => {
             if (db.numeros[n]) db.numeros[n].estado = "pagado";
         });
 
         save();
-        refreshBoard();
+        refresh();
     }
 
-    if (q.data.startsWith("no_")) {
+    // =====================
+    if (d.startsWith("no_") && q.from.id === ADMIN_ID) {
 
-        let nums = q.data.split("_")[1].split("-");
+        let nums = d.split("_")[1].split("-");
 
         nums.forEach(n => delete db.numeros[n]);
 
         save();
-        refreshBoard();
+        refresh();
     }
 });
 
 // =====================
-// 🔄 ACTUALIZACIÓN CONTROLADA (CLAVE)
-function refreshBoard() {
+// 🔄 SOLO REFRESCO BOTONES (NO CRONÓMETRO INTERMITENTE)
+function refresh() {
 
-    if (!chatId || !boardMessageId) return;
+    if (!chatId || !boardId) return;
 
     bot.editMessageReplyMarkup(board(), {
         chat_id: chatId,
-        message_id: boardMessageId
+        message_id: boardId
     }).catch(()=>{});
 }
 
 // =====================
-// ⏱ MOTOR 10 MIN (SIN CONGELAR)
+// ⏱ LIBERACIÓN 10 MIN (CLAVE)
 setInterval(() => {
 
     let changed = false;
@@ -207,9 +162,6 @@ setInterval(() => {
             if (Date.now() - item.time >= 10 * 60 * 1000) {
 
                 delete db.numeros[n];
-
-                db.total -= 3000;
-
                 changed = true;
             }
         }
@@ -217,7 +169,7 @@ setInterval(() => {
 
     if (changed) {
         save();
-        refreshBoard();
+        refresh();
     }
 
 }, 5000);
