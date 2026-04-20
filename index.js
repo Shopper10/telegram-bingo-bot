@@ -6,18 +6,10 @@ const ADMIN_ID = Number(process.env.ADMIN_ID);
 
 const bot = new TelegramBot(token, { polling: true });
 
-// =====================
-// ANTI DUPLICADO RAILWAY
-// =====================
-if (global.botRunning) {
-    console.log("BOT YA ACTIVO");
-    process.exit(0);
-}
-global.botRunning = true;
-
-// =====================
 const DATA_FILE = "./data.json";
 
+// =====================
+// ESTADO GLOBAL
 // =====================
 let numeros = {};
 let tableroChatId = null;
@@ -26,6 +18,9 @@ let totalDinero = 0;
 
 let timers = {};
 let startTimes = {};
+
+let bingoActivo = false;
+let numerosSorteados = [];
 
 // =====================
 // LOAD / SAVE
@@ -121,13 +116,99 @@ function repostTablero() {
         reply_markup: {
             inline_keyboard: generarTablero()
         }
-    }).then(msg => {
-        tableroMessageId = msg.message_id;
     });
 }
 
 // =====================
-// TIMER 10 MIN
+// CHECK TODOS VENDIDOS (FIX REAL)
+// =====================
+function todosVendidos() {
+    for (let i = 1; i <= 15; i++) {
+        if (!numeros[i] || numeros[i].estado !== "pagado") {
+            return false;
+        }
+    }
+    return true;
+}
+
+// =====================
+// INICIAR BINGO
+// =====================
+function iniciarBingo() {
+
+    if (bingoActivo) return;
+
+    bingoActivo = true;
+    numerosSorteados = [];
+
+    bot.sendMessage(tableroChatId,
+`🎉 TODOS LOS NÚMEROS VENDIDOS
+
+🎰 INICIA EL BINGO`);
+
+    setTimeout(sacarNumero, 3000);
+}
+
+// =====================
+// RUEDA AUTOMÁTICA
+// =====================
+function sacarNumero() {
+
+    if (!bingoActivo) return;
+
+    let disponibles = [];
+
+    for (let i = 1; i <= 15; i++) {
+        if (!numerosSorteados.includes(i)) {
+            disponibles.push(i);
+        }
+    }
+
+    if (!disponibles.length) return;
+
+    let num = disponibles[Math.floor(Math.random() * disponibles.length)];
+
+    numerosSorteados.push(num);
+
+    bot.sendMessage(tableroChatId,
+`🎰 SALE: ${num}
+
+📊 ${numerosSorteados.join(" - ")}`);
+
+    verificarGanador();
+
+    setTimeout(sacarNumero, 2500);
+}
+
+// =====================
+// GANADOR
+// =====================
+function verificarGanador() {
+
+    const lineas = [
+        [1,2,3,4,5],
+        [6,7,8,9,10],
+        [11,12,13,14,15]
+    ];
+
+    for (let linea of lineas) {
+
+        if (linea.every(n => numerosSorteados.includes(n))) {
+
+            bingoActivo = false;
+
+            bot.sendMessage(tableroChatId,
+`🏆 ¡BINGO!
+
+🎯 Línea ganadora: ${linea.join(" - ")}`);
+
+            return;
+        }
+    }
+}
+
+// =====================
+// TIMER
 // =====================
 function iniciarTimer(num) {
 
@@ -137,14 +218,11 @@ function iniciarTimer(num) {
 
     timers[num] = setTimeout(() => {
 
-        const item = numeros[num];
+        if (!numeros[num] || numeros[num].estado === "pagado") return;
 
-        if (!item || item.estado === "pagado") return;
-
-        const user = item.user.name;
+        const user = numeros[num].user.name;
 
         delete numeros[num];
-        delete timers[num];
         delete startTimes[num];
 
         guardarDatos();
@@ -159,7 +237,7 @@ function iniciarTimer(num) {
 }
 
 // =====================
-// AUTO UPDATE
+// AUTO UPDATE TABLERO
 // =====================
 setInterval(() => {
 
@@ -203,7 +281,6 @@ bot.on('callback_query', (query) => {
 
     const data = query.data;
 
-    // TOMAR NÚMERO
     if (data.startsWith("num_")) {
 
         const num = parseInt(data.split("_")[1]);
@@ -226,7 +303,7 @@ bot.on('callback_query', (query) => {
 
 🎰 ${num}
 👤 ${numeros[num].user.name}
-ENVIAR COMPROBANTE PAGO AL GRUPO SINO SE CANCELA EN 10MIN Y VUELVE DISPONIBLE EL NUMERO 
+
 💰 Nequi: 3123902322
 ⏱ 10 min`);
 
@@ -237,7 +314,6 @@ ENVIAR COMPROBANTE PAGO AL GRUPO SINO SE CANCELA EN 10MIN Y VUELVE DISPONIBLE EL
 
     const nums = data.split("_")[1]?.split("-") || [];
 
-    // APROBAR
     if (data.startsWith("ok_")) {
 
         nums.forEach(n => {
@@ -253,10 +329,15 @@ ENVIAR COMPROBANTE PAGO AL GRUPO SINO SE CANCELA EN 10MIN Y VUELVE DISPONIBLE EL
         bot.sendMessage(tableroChatId, "✅ CONFIRMADO ✔");
 
         repostTablero();
+
+        // 🔥 ESTE ES EL FIX CLAVE
+        if (todosVendidos()) {
+            iniciarBingo();
+        }
+
         return;
     }
 
-    // RECHAZAR
     if (data.startsWith("no_")) {
 
         nums.forEach(n => {
@@ -272,139 +353,3 @@ ENVIAR COMPROBANTE PAGO AL GRUPO SINO SE CANCELA EN 10MIN Y VUELVE DISPONIBLE EL
         return;
     }
 });
-
-// =====================
-// FOTO + COMPROBANTE FLOW
-// =====================
-bot.on('message', (msg) => {
-
-    if (!msg.photo) return;
-
-    const userId = msg.from.id;
-    const fileId = msg.photo[msg.photo.length - 1].file_id;
-
-    let nums = [];
-
-    for (let n in numeros) {
-
-        const item = numeros[n];
-
-        if (
-            item &&
-            item.user.id === userId &&
-            (item.estado === "reservado" || item.estado === "pendiente")
-        ) {
-            nums.push(n);
-        }
-    }
-
-    if (!nums.length) {
-        bot.sendMessage(msg.chat.id, "❌ No tienes números activos");
-        return;
-    }
-
-    nums.forEach(n => {
-        numeros[n].estado = "pendiente";
-    });
-
-    guardarDatos();
-
-    // 🔍 MENSAJE REQUERIDO
-    bot.sendMessage(tableroChatId, "🔍 COMPROBANDO PAGO...");
-
-    bot.sendPhoto(tableroChatId, fileId, {
-        caption:
-`📥 COMPROBANTE DE PAGO
-
-👤 ${getUser(msg.from)}
-🎰 ${nums.join(", ")}
-
-⏳ Esperando aprobación admin`,
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: "🟢 APROBAR", callback_data: `ok_${nums.join("-")}` },
-                    { text: "🔴 RECHAZAR", callback_data: `no_${nums.join("-")}` }
-                ]
-            ]
-        }
-    });
-});
-function todosVendidos() {
-    for (let i = 1; i <= 15; i++) {
-        if (!numeros[i] || numeros[i].estado !== "pagado") {
-            return false;
-        }
-    }
-    return true;
-}
-let bingoActivo = false;
-let numerosSorteados = [];
-
-function iniciarBingo() {
-
-    if (bingoActivo) return;
-
-    bingoActivo = true;
-    numerosSorteados = [];
-
-    bot.sendMessage(tableroChatId,
-`🎉 TODOS LOS NÚMEROS VENDIDOS
-
-🎰 INICIA EL BINGO YA`);
-
-    setTimeout(sacarNumero, 3000);
-}
-function sacarNumero() {
-
-    if (!bingoActivo) return;
-
-    let disponibles = [];
-
-    for (let i = 1; i <= 15; i++) {
-        if (!numerosSorteados.includes(i)) {
-            disponibles.push(i);
-        }
-    }
-
-    if (!disponibles.length) return;
-
-    let num = disponibles[Math.floor(Math.random() * disponibles.length)];
-
-    numerosSorteados.push(num);
-
-    bot.sendMessage(tableroChatId,
-`🎰 SALE: ${num}
-
-📊 ${numerosSorteados.join(" - ")}`);
-
-    verificarGanador();
-
-    setTimeout(sacarNumero, 2500);
-}
-function verificarGanador() {
-
-    const lineas = [
-        [1,2,3,4,5],
-        [6,7,8,9,10],
-        [11,12,13,14,15]
-    ];
-
-    for (let linea of lineas) {
-
-        if (linea.every(n => numerosSorteados.includes(n))) {
-
-            bingoActivo = false;
-
-            bot.sendMessage(tableroChatId,
-`🏆 ¡BINGO!
-
-🎯 Línea: ${linea.join(" - ")}`);
-
-            return;
-        }
-    }
-}
-if (todosVendidos()) {
-    iniciarBingo();
-}
