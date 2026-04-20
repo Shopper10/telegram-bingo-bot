@@ -34,7 +34,6 @@ function getUser(u) {
 }
 
 // =====================
-// ⏱ 10 MIN
 function getMinutesLeft(start) {
     const limit = 10 * 60 * 1000;
     const diff = limit - (Date.now() - start);
@@ -42,7 +41,7 @@ function getMinutesLeft(start) {
 }
 
 // =====================
-// 🎰 TABLERO (MISMO FORMATO ORIGINAL)
+// 🎰 TABLERO
 function generarTablero() {
 
     let kb = [];
@@ -102,7 +101,7 @@ function updateBoard() {
 }
 
 // =====================
-// 🚀 INICIAR BINGO
+// 🚀 INICIO
 bot.onText(/\/bingo/, async (msg) => {
 
     if (msg.from.id !== ADMIN_ID) return;
@@ -147,7 +146,7 @@ bot.on("callback_query", (q) => {
 });
 
 // =====================
-// 📸 COMPROBANTE
+// 📸 COMPROBANTE + BARRA EN 1 MENSAJE
 bot.on("message", (msg) => {
 
     if (!msg.photo) return;
@@ -166,87 +165,99 @@ bot.on("message", (msg) => {
 
     save();
 
+    let bar = [
+        "⬜️⬜️⬜️⬜️⬜️",
+        "🟩⬜️⬜️⬜️⬜️",
+        "🟩🟩⬜️⬜️⬜️",
+        "🟩🟩🟩⬜️⬜️",
+        "🟩🟩🟩🟩⬜️",
+        "🟩🟩🟩🟩🟩"
+    ];
+
+    let i = 0;
+
     bot.sendMessage(chatId,
 `🔍 COMPROBANDO PAGO...
-🎰 ${nums.join(", ")}
 
-👮 Esperando admin`);
-});
+⬜️⬜️⬜️⬜️⬜️`).then((m) => {
 
-// =====================
-// 🎛 PANEL ADMIN
-bot.onText(/\/admin/, (msg) => {
+        let id = m.message_id;
 
-    if (msg.from.id !== ADMIN_ID) return;
+        let interval = setInterval(() => {
 
-    bot.sendMessage(msg.chat.id,
-`🎛 PANEL ADMIN
+            bot.editMessageText(
+`🔍 COMPROBANDO PAGO...
 
-💰 Total: $${db.total}
-🎰 Números activos: ${Object.keys(db.numeros).length}`, {
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: "🎰 Nueva partida", callback_data: "admin_new" },
-                    { text: "♻ Reset", callback_data: "admin_reset" }
-                ],
-                [
-                    { text: "💰 Pay all", callback_data: "admin_payall" },
-                    { text: "📊 Estado", callback_data: "admin_state" }
-                ]
-            ]
-        }
+${bar[i]}
+
+🎰 Números: ${nums.join(", ")}`, {
+                chat_id: chatId,
+                message_id: id
+            }).catch(()=>{});
+
+            i++;
+
+            if (i >= bar.length) {
+
+                clearInterval(interval);
+
+                // 👮 ENVIAR A ADMIN PARA APROBACIÓN
+                bot.sendMessage(chatId,
+`📸 PAGO EN REVISIÓN
+
+🎰 Números: ${nums.join(", ")}
+👤 ${getUser(msg.from)}`, {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: "🟢 APROBAR", callback_data: `ok_${nums.join("-")}` },
+                                { text: "🔴 RECHAZAR", callback_data: `no_${nums.join("-")}` }
+                            ]
+                        ]
+                    }
+                });
+            }
+
+        }, 700);
     });
 });
 
 // =====================
-// 👮 ACCIONES ADMIN
+// 👮 APROBACIÓN ADMIN
 bot.on("callback_query", (q) => {
 
     if (q.from.id !== ADMIN_ID) return;
 
     let d = q.data;
 
-    // 🎰 NUEVA PARTIDA
-    if (d === "admin_new") {
+    // 🟢 APROBAR
+    if (d.startsWith("ok_")) {
 
-        db.numeros = {};
-        save();
-        updateBoard();
+        let nums = d.split("_")[1].split("-");
 
-        bot.sendMessage(chatId, "🎰 NUEVA PARTIDA INICIADA");
-    }
-
-    // ♻ RESET
-    if (d === "admin_reset") {
-
-        db = { numeros: {}, total: 0 };
-        save();
-        updateBoard();
-
-        bot.sendMessage(chatId, "♻ SISTEMA REINICIADO");
-    }
-
-    // 💰 PAY ALL
-    if (d === "admin_payall") {
-
-        for (let n in db.numeros) {
-            db.numeros[n].estado = "pagado";
-        }
+        nums.forEach(n => {
+            if (db.numeros[n]) db.numeros[n].estado = "pagado";
+        });
 
         save();
         updateBoard();
 
-        bot.sendMessage(chatId, "💰 TODOS PAGADOS");
+        bot.sendMessage(chatId, "✅ PAGO APROBADO");
+
     }
 
-    // 📊 ESTADO
-    if (d === "admin_state") {
+    // 🔴 RECHAZAR
+    if (d.startsWith("no_")) {
 
-        bot.sendMessage(chatId,
-`📊 ESTADO
+        let nums = d.split("_")[1].split("-");
 
-💰 Total: $${db.total}
-🎰 Activos: ${Object.keys(db.numeros).length}`);
+        nums.forEach(n => {
+            delete db.numeros[n];
+        });
+
+        save();
+        updateBoard();
+
+        bot.sendMessage(chatId, "❌ PAGO RECHAZADO");
     }
 });
