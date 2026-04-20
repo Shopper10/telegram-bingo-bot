@@ -33,9 +33,7 @@ function getUser(u) {
 }
 
 // =====================
-// ⏱ TIMER EN VIVO (MIN:SEG)
 function getTimeLeft(start) {
-
     const limit = 10 * 60 * 1000;
     const diff = limit - (Date.now() - start);
 
@@ -63,9 +61,17 @@ function generarTablero() {
             continue;
         }
 
-        if (item.estado === "reservado" || item.estado === "pendiente") {
+        if (item.estado === "reservado") {
             kb.push([{
                 text: `⛔️ ${item.name} ⏱ ${getTimeLeft(item.time)}`,
+                callback_data: "wait"
+            }]);
+            continue;
+        }
+
+        if (item.estado === "pendiente") {
+            kb.push([{
+                text: `🔍 ${item.name} EN REVISIÓN`,
                 callback_data: "wait"
             }]);
             continue;
@@ -80,7 +86,6 @@ function generarTablero() {
 }
 
 // =====================
-// 🔄 ACTUALIZA TABLERO
 function updateBoard() {
 
     if (!chatId || !messageId) return;
@@ -98,7 +103,7 @@ function updateBoard() {
 }
 
 // =====================
-// 🚀 /bingo RESET TOTAL
+// 🚀 /bingo RESET
 bot.onText(/\/bingo/, async (msg) => {
 
     if (msg.from.id !== ADMIN_ID) return;
@@ -149,7 +154,7 @@ bot.on("callback_query", (q) => {
 });
 
 // =====================
-// 📸 FOTO + BARRA
+// 📸 FOTO + BARRA + BOTONES EN GRUPO
 bot.on("message", (msg) => {
 
     if (!msg.photo) return;
@@ -198,13 +203,9 @@ ${bar[i]}`, {
 
                 clearInterval(interval);
 
+                // 👥 BOTONES EN EL GRUPO (VISIBLE PARA TODOS)
                 bot.sendMessage(chatId,
-`📸 PAGO RECIBIDO
-🎰 ${nums.join(", ")}
-👤 ${getUser(msg.from)}`);
-
-                bot.sendMessage(ADMIN_ID,
-`📸 APROBAR PAGO
+`📸 PAGO EN REVISIÓN
 
 🎰 ${nums.join(", ")}
 👤 ${getUser(msg.from)}`, {
@@ -224,13 +225,14 @@ ${bar[i]}`, {
 });
 
 // =====================
-// 👮 ADMIN CONTROL
+// 👮 SOLO ADMIN PUEDE USAR BOTONES (EN GRUPO)
 bot.on("callback_query", (q) => {
 
     if (q.from.id !== ADMIN_ID) return;
 
     let d = q.data;
 
+    // 🟢 APROBAR
     if (d.startsWith("ok_")) {
 
         let nums = d.split("_")[1].split("-");
@@ -242,9 +244,10 @@ bot.on("callback_query", (q) => {
         save();
         updateBoard();
 
-        bot.sendMessage(chatId, "✅ APROBADO");
+        bot.sendMessage(chatId, "✅ PAGO APROBADO");
     }
 
+    // 🔴 RECHAZAR
     if (d.startsWith("no_")) {
 
         let nums = d.split("_")[1].split("-");
@@ -254,18 +257,12 @@ bot.on("callback_query", (q) => {
         save();
         updateBoard();
 
-        bot.sendMessage(chatId, "❌ RECHAZADO");
+        bot.sendMessage(chatId, "❌ PAGO RECHAZADO");
     }
 });
 
 // =====================
-// 🔄 TIMER EN VIVO
-setInterval(() => {
-    updateBoard();
-}, 5000);
-
-// =====================
-// 🎰 INICIO AUTOMÁTICO
+// 🎰 FINAL AUTOMÁTICO
 function checkFull() {
 
     if (!bingoIniciado && Object.keys(db.numeros).length === 15) {
@@ -275,20 +272,3 @@ function checkFull() {
         bot.sendMessage(chatId, "🎰 INICIO DE BINGO");
     }
 }
-
-// =====================
-// 🎛 ADMIN PRIVADO
-bot.onText(/\/admin/, (msg) => {
-
-    if (msg.from.id !== ADMIN_ID) return;
-
-    if (msg.chat.type !== "private") {
-        bot.sendMessage(msg.chat.id, "❌ Solo privado");
-        return;
-    }
-
-    bot.sendMessage(msg.chat.id,
-`🎛 PANEL ADMIN
-
-💰 Total: $${db.total}`);
-});
