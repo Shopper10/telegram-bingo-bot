@@ -10,7 +10,7 @@ const bot = new TelegramBot(token, {
     polling: { autoStart: true, interval: 2000 }
 });
 
-console.log("🎰 CASINO + AI CHECK ONLINE");
+console.log("🎰 CASINO TEXT CLEAN ONLINE");
 
 // =====================
 const DB_FILE = "./data.json";
@@ -43,23 +43,43 @@ function user(u) {
 }
 
 // =====================
-// 🧼 TABLERO LIMPIO
-function board() {
+// 🎰 TABLERO EN TEXTO (EXACTO COMO QUIERES)
+function buildBoard() {
 
-    let kb = [];
+    let text = `🎰 CASINO BINGO\n\n`;
 
     for (let i = 1; i <= 15; i++) {
 
         const n = db.numeros[i];
 
+        // 🟢 DISPONIBLE
         if (!n) {
-            kb.push([{ text: `🟢 ${i} - DISPONIBLE`, callback_data: `buy_${i}` }]);
-        } else {
-            kb.push([{ text: `⛔️ ${n.name}`, callback_data: "ignore" }]);
+            text += `🟢 ${i} - DISPONIBLE\n`;
+            continue;
+        }
+
+        // ⛔ RESERVADO
+        if (n.estado === "reservado") {
+            text += `⛔️ ${n.name} ⏱️ 10min\n`;
+            continue;
+        }
+
+        // ⏳ PENDIENTE
+        if (n.estado === "pendiente") {
+            text += `🔍 ${n.name} COMPROBANDO...\n`;
+            continue;
+        }
+
+        // ✅ PAGADO
+        if (n.estado === "pagado") {
+            text += `✅ ${n.name} PAGADO\n`;
+            continue;
         }
     }
 
-    return { inline_keyboard: kb };
+    text += `\n💰 TOTAL: $${db.total}`;
+
+    return text;
 }
 
 // =====================
@@ -67,19 +87,14 @@ function updateBoard() {
 
     if (!chatId || !messageId) return;
 
-    bot.editMessageText(
-`🎰 CASINO BINGO
-
-💰 Total: $${db.total}
-🎯 Activo`, {
+    bot.editMessageText(buildBoard(), {
         chat_id: chatId,
-        message_id: messageId,
-        reply_markup: board()
+        message_id: messageId
     }).catch(()=>{});
 }
 
 // =====================
-// 🔥 SOLD OUT
+// 🔥 SOLD OUT CHECK
 function checkSoldOut() {
 
     if (bingoActive) return;
@@ -91,7 +106,7 @@ function checkSoldOut() {
     bingoActive = true;
 
     bot.sendMessage(chatId,
-`🎉🔥 SOLD OUT 🔥🎉
+`🎉🔥 TODOS LOS NÚMEROS VENDIDOS 🔥🎉
 
 🚀 INICIANDO BINGO...`);
 
@@ -99,6 +114,7 @@ function checkSoldOut() {
 }
 
 // =====================
+// 🎰 BINGO FINAL
 function startBingo() {
 
     let nums = Array.from({ length: 15 }, (_, i) => i + 1);
@@ -109,38 +125,38 @@ function startBingo() {
     bot.sendMessage(chatId,
 `🏆 BINGO FINAL 🏆
 
-🎰 ${winner}
-👤 ${name}`);
+🎰 Número ganador: ${winner}
+👤 ${name}
+
+🎉 FELICIDADES!`);
 }
 
 // =====================
-// 🚀 START
+// 🚀 INICIAR TABLERO
 bot.onText(/\/bingo/, async (msg) => {
 
     chatId = msg.chat.id;
 
-    const sent = await bot.sendMessage(chatId,
-`🎰 CASINO BINGO`, {
-        reply_markup: board()
-    });
+    const sent = await bot.sendMessage(chatId, buildBoard());
 
     messageId = sent.message_id;
 });
 
 // =====================
-// 🎯 COMPRA
-bot.on("callback_query", (q) => {
+// 🎯 COMPRA DE NÚMEROS (SIN BOTONES)
+bot.on("message", (msg) => {
 
-    bot.answerCallbackQuery(q.id).catch(()=>{});
+    if (!msg.text) return;
 
-    if (!q.data.startsWith("buy_")) return;
+    // ejemplo simple: escribir "1", "2", etc
+    let num = parseInt(msg.text);
 
-    let n = q.data.split("_")[1];
+    if (isNaN(num) || num < 1 || num > 15) return;
 
-    if (db.numeros[n]) return;
+    if (db.numeros[num]) return;
 
-    db.numeros[n] = {
-        name: user(q.from),
+    db.numeros[num] = {
+        name: user(msg.from),
         estado: "reservado",
         time: Date.now()
     };
@@ -151,18 +167,18 @@ bot.on("callback_query", (q) => {
     updateBoard();
 
     bot.sendMessage(chatId,
-`💰 PAGO
-🎰 ${n}
-📲 Envía comprobante`);
+`💰 NÚMERO RESERVADO
+🎰 ${num}
+👤 ${user(msg.from)}
+
+📸 Envía comprobante`);
 });
 
 // =====================
-// 📸 COMPROBANTE + “IA CHECK”
-bot.on("message", async (msg) => {
+// 📸 COMPROBANTE
+bot.on("message", (msg) => {
 
     if (!msg.photo) return;
-
-    let file = msg.photo[msg.photo.length - 1].file_id;
 
     let nums = [];
 
@@ -178,30 +194,10 @@ bot.on("message", async (msg) => {
 
     save();
 
-    // 🔍 SIMULACIÓN IA
-    bot.sendMessage(chatId,
-`🔍 IA ANALYZER
+    bot.sendMessage(chatId, "🔍 COMPROBANDO PAGOS...");
 
-Analizando comprobante...`);
-
-    // 🧠 SIMULACIÓN DE RESULTADO IA
     setTimeout(() => {
 
-        let aiResult = Math.random();
-
-        let status = aiResult > 0.3 ? "🟢 PARECE VÁLIDO" : "🟡 SOSPECHOSO";
-
-        bot.sendPhoto(chatId, file, {
-            caption:
-`📥 COMPROBANTE RECIBIDO
-
-🤖 IA RESULTADO: ${status}
-🎰 ${nums.join(", ")}
-
-⏳ En revisión final`
-        });
-
-        // 🔥 AUTO APROBACIÓN SIMPLE (SIMULADA)
         nums.forEach(n => {
             db.numeros[n].estado = "pagado";
         });
@@ -210,7 +206,7 @@ Analizando comprobante...`);
         updateBoard();
         checkSoldOut();
 
-        bot.sendMessage(chatId, "✅ PAGOS ACTUALIZADOS");
+        bot.sendMessage(chatId, "✅ PAGOS APROBADOS");
 
     }, 3000);
 });
