@@ -67,7 +67,7 @@ function generarTablero() {
 
         const item = numeros[i];
 
-        let text = `🟢 ${i}`;
+        let text = `🟢 "DISPONIBLE"${i}`;
 
         if (item) {
 
