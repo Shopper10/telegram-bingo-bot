@@ -6,12 +6,6 @@ const ADMIN_ID = Number(process.env.ADMIN_ID);
 
 const bot = new TelegramBot(token, { polling: true });
 
-if (global.botRunning) {
-    console.log("BOT YA CORRIENDO");
-    process.exit(0);
-}
-global.botRunning = true;
-
 const DATA_FILE = "./data.json";
 
 // =====================
@@ -26,8 +20,6 @@ let startTimes = {};
 let bingoActivo = false;
 let numerosSorteados = [];
 
-// =====================
-// LOAD / SAVE
 // =====================
 function cargarDatos() {
     try {
@@ -59,7 +51,7 @@ function formatTiempo(ms) {
     return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-// ===================== TABLERO
+// =====================
 function generarTablero() {
 
     let kb = [];
@@ -76,25 +68,19 @@ function generarTablero() {
             continue;
         }
 
-        const u = item.user.name;
-
         let text = `🟢 ${i}- DISPONIBLE`;
 
         if (item.estado === "reservado" || item.estado === "pendiente") {
 
             let restante = 600000 - (Date.now() - startTimes[i]);
-
-            text = `⛔ ${i}- ${u} ⏱ ${formatTiempo(restante)}`;
+            text = `⛔ ${i}- ${item.user.name} ⏱ ${formatTiempo(restante)}`;
         }
 
         if (item.estado === "pagado") {
-            text = `✅ ${i}- ${u} - PAGADO`;
+            text = `✅ ${i}- ${item.user.name} - PAGADO`;
         }
 
-        kb.push([{
-            text,
-            callback_data: `num_${i}`
-        }]);
+        kb.push([{ text, callback_data: `num_${i}` }]);
     }
 
     return kb;
@@ -116,27 +102,56 @@ function repostTablero() {
 }
 
 // =====================
-// CHECK VENDIDOS (ULTRA FIX)
-function todosVendidos() {
+// DEBUG SYSTEM 🔥
+function debugEstado(chatId) {
 
-    let faltan = [];
+    let pagados = [];
+    let pendientes = [];
+    let reservados = [];
+    let faltantes = [];
 
     for (let i = 1; i <= 15; i++) {
 
         const n = numeros[i];
 
-        if (!n || n.estado !== "pagado") {
-            faltan.push(i);
+        if (!n) {
+            faltantes.push(i);
+        } else if (n.estado === "pagado") {
+            pagados.push(i);
+        } else if (n.estado === "pendiente") {
+            pendientes.push(i);
+        } else {
+            reservados.push(i);
         }
     }
 
-    if (faltan.length) {
-        console.log("❌ FALTAN:", faltan);
-        return false;
+    const msg =
+`🧠 DEBUG CASINO
+
+✅ PAGADOS: ${pagados.join(", ") || "ninguno"}
+⏳ PENDIENTES: ${pendientes.join(", ") || "ninguno"}
+⛔ RESERVADOS: ${reservados.join(", ") || "ninguno"}
+❌ FALTANTES: ${faltantes.join(", ") || "ninguno"}
+
+📊 TOTAL PAGADOS: ${pagados.length}/15`;
+
+    bot.sendMessage(chatId, msg);
+}
+
+// =====================
+function todosVendidos() {
+
+    let count = 0;
+
+    for (let i = 1; i <= 15; i++) {
+        if (numeros[i] && numeros[i].estado === "pagado") {
+            count++;
+        }
     }
 
-    console.log("✅ TODOS VENDIDOS OK");
-    return true;
+    console.log("VENDIDOS:", count);
+
+    return count === 15;
 }
 
 // =====================
@@ -209,7 +224,7 @@ function verificarGanador() {
     }
 }
 
-// ===================== TIMER
+// =====================
 function iniciarTimer(num) {
 
     startTimes[num] = Date.now();
@@ -235,7 +250,7 @@ function iniciarTimer(num) {
     }, 600000);
 }
 
-// ===================== AUTO UPDATE TABLERO
+// =====================
 setInterval(() => {
 
     if (!tableroChatId || !tableroMessageId) return;
@@ -270,7 +285,12 @@ bot.onText(/\/bingo/, async (msg) => {
     tableroMessageId = sent.message_id;
 });
 
-// ===================== CALLBACKS
+// ===================== 🔥 DEBUG COMMAND
+bot.onText(/\/debug/, (msg) => {
+    debugEstado(msg.chat.id);
+});
+
+// =====================
 bot.on('callback_query', (query) => {
 
     const data = query.data;
@@ -308,9 +328,6 @@ bot.on('callback_query', (query) => {
 
     const nums = data.split("_")[1]?.split("-") || [];
 
-    // =====================
-    // APROBAR
-    // =====================
     if (data.startsWith("ok_")) {
 
         nums.forEach(n => {
@@ -328,17 +345,17 @@ bot.on('callback_query', (query) => {
         repostTablero();
 
         setTimeout(() => {
+
             if (todosVendidos()) {
+                bot.sendMessage(tableroChatId, "🎉 TODOS LOS NÚMEROS VENDIDOS");
                 iniciarBingo();
             }
-        }, 700);
+
+        }, 1200);
 
         return;
     }
 
-    // =====================
-    // RECHAZAR
-    // =====================
     if (data.startsWith("no_")) {
 
         nums.forEach(n => {
@@ -356,7 +373,6 @@ bot.on('callback_query', (query) => {
 });
 
 // =====================
-// FOTO
 bot.on('message', (msg) => {
 
     if (!msg.photo) return;
@@ -387,13 +403,7 @@ bot.on('message', (msg) => {
     bot.sendMessage(tableroChatId, "🔍 COMPROBANDO PAGO...");
 
     bot.sendPhoto(tableroChatId, fileId, {
-        caption:
-`📥 COMPROBANTE
-
-👤 ${getUser(msg.from)}
-🎰 ${nums.join(", ")}
-
-⏳ Esperando admin`,
+        caption: `📥 COMPROBANTE\n👤 ${getUser(msg.from)}\n🎰 ${nums.join(", ")}`,
         reply_markup: {
             inline_keyboard: [
                 [
