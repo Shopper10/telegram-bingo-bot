@@ -14,13 +14,19 @@ const bot = new TelegramBot(token, {
 const DB_FILE = "./data.json";
 
 let db = { numeros: {}, total: 0 };
+
 let chatId = null;
-let messageId = null;
+let boardMessageId = null;
+let timerMessageId = null;
+
+let startTime = null;
 let bingoIniciado = false;
 
 // =====================
 function load() {
-    if (fs.existsSync(DB_FILE)) db = JSON.parse(fs.readFileSync(DB_FILE));
+    if (fs.existsSync(DB_FILE)) {
+        db = JSON.parse(fs.readFileSync(DB_FILE));
+    }
 }
 function save() {
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
@@ -33,15 +39,12 @@ function getUser(u) {
 }
 
 // =====================
-// ⏱ CRONÓMETRO REAL (MIN:SEG)
-function getTimeLeft(start) {
+// ⏱ FORMATO TIMER
+function formatTime(ms) {
 
-    const limit = 10 * 60 * 1000;
-    const diff = limit - (Date.now() - start);
+    if (ms <= 0) return "0:00";
 
-    if (diff <= 0) return "0:00";
-
-    const sec = Math.floor(diff / 1000);
+    const sec = Math.floor(ms / 1000);
     const m = Math.floor(sec / 60);
     const s = sec % 60;
 
@@ -64,18 +67,12 @@ function generarTablero() {
         }
 
         if (item.estado === "reservado") {
-            kb.push([{
-                text: `⛔️ ${item.name} ⏱ ${getTimeLeft(item.time)}`,
-                callback_data: "wait"
-            }]);
+            kb.push([{ text: `⛔️ ${item.name}`, callback_data: "wait" }]);
             continue;
         }
 
         if (item.estado === "pendiente") {
-            kb.push([{
-                text: `🔍 ${item.name}`,
-                callback_data: "wait"
-            }]);
+            kb.push([{ text: `🔍 ${item.name}`, callback_data: "wait" }]);
             continue;
         }
 
@@ -90,18 +87,16 @@ function generarTablero() {
 // =====================
 function updateBoard() {
 
-    if (!chatId || !messageId) return;
+    if (!chatId || !boardMessageId) return;
 
     bot.editMessageText(
 `🎰 CASINO BINGO
 
 💰 Total: $${db.total}`, {
         chat_id: chatId,
-        message_id: messageId,
+        message_id: boardMessageId,
         reply_markup: generarTablero()
     }).catch(()=>{});
-
-    checkFull();
 }
 
 // =====================
@@ -118,13 +113,46 @@ bot.onText(/\/bingo/, async (msg) => {
 
     save();
 
-    const sent = await bot.sendMessage(chatId,
+    startTime = Date.now();
+
+    // 🎰 TABLERO
+    const board = await bot.sendMessage(chatId,
 `🎰 CASINO BINGO - NUEVA PARTIDA`, {
         reply_markup: generarTablero()
     });
 
-    messageId = sent.message_id;
+    boardMessageId = board.message_id;
+
+    // ⏱ TIMER
+    const timer = await bot.sendMessage(chatId,
+`⏱ INICIANDO...`);
+
+    timerMessageId = timer.message_id;
 });
+
+// =====================
+// 🔄 TIMER EN VIVO (ESTO EVITA EL “CONGELADO”)
+setInterval(() => {
+
+    if (!timerMessageId || !startTime) return;
+
+    const limit = 10 * 60 * 1000;
+    const diff = limit - (Date.now() - startTime);
+
+    let text;
+
+    if (diff <= 0) {
+        text = `🎰 TIEMPO FINALIZADO\n\n🟢 LISTO PARA NUEVA ACCIÓN`;
+    } else {
+        text = `🎰 BINGO ACTIVO\n\n⏱ ${formatTime(diff)}`;
+    }
+
+    bot.editMessageText(text, {
+        chat_id: chatId,
+        message_id: timerMessageId
+    }).catch(()=>{});
+
+}, 2000);
 
 // =====================
 // 🎯 COMPRA
@@ -151,12 +179,11 @@ bot.on("callback_query", (q) => {
 
     bot.sendMessage(chatId,
 `💰 RESERVADO
-🎰 ${n}
-⏱ 10 MIN`);
+🎰 ${n}`);
 });
 
 // =====================
-// 📸 FOTO + BARRA + BOTONES EN GRUPO
+// 📸 FOTO + REVISIÓN
 bot.on("message", (msg) => {
 
     if (!msg.photo) return;
@@ -174,58 +201,24 @@ bot.on("message", (msg) => {
 
     save();
 
-    const bar = [
-        "⬜️⬜️⬜️⬜️⬜️",
-        "🟩⬜️⬜️⬜️⬜️",
-        "🟩🟩⬜️⬜️⬜️",
-        "🟩🟩🟩⬜️⬜️",
-        "🟩🟩🟩🟩⬜️",
-        "🟩🟩🟩🟩🟩"
-    ];
-
-    let i = 0;
-
-    bot.sendMessage(chatId, "🔍 COMPROBANDO PAGO...").then((m) => {
-
-        let id = m.message_id;
-
-        let interval = setInterval(() => {
-
-            bot.editMessageText(
-`🔍 COMPROBANDO PAGO...
-
-${bar[i]}`, {
-                chat_id: chatId,
-                message_id: id
-            }).catch(()=>{});
-
-            i++;
-
-            if (i >= bar.length) {
-
-                clearInterval(interval);
-
-                bot.sendMessage(chatId,
+    bot.sendMessage(chatId,
 `📸 PAGO EN REVISIÓN
+
 🎰 ${nums.join(", ")}
 👤 ${getUser(msg.from)}`, {
-                    reply_markup: {
-                        inline_keyboard: [
-                            [
-                                { text: "🟢 APROBAR", callback_data: `ok_${nums.join("-")}` },
-                                { text: "🔴 RECHAZAR", callback_data: `no_${nums.join("-")}` }
-                            ]
-                        ]
-                    }
-                });
-            }
-
-        }, 700);
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: "🟢 APROBAR", callback_data: `ok_${nums.join("-")}` },
+                    { text: "🔴 RECHAZAR", callback_data: `no_${nums.join("-")}` }
+                ]
+            ]
+        }
     });
 });
 
 // =====================
-// 👮 SOLO ADMIN (EN GRUPO)
+// 👮 ADMIN CONTROL (EN GRUPO)
 bot.on("callback_query", (q) => {
 
     if (q.from.id !== ADMIN_ID) return;
@@ -260,43 +253,6 @@ bot.on("callback_query", (q) => {
 });
 
 // =====================
-// 🔄 AUTO LIBERACIÓN 10 MIN
-setInterval(() => {
-
-    let changed = false;
-
-    for (let n in db.numeros) {
-
-        let item = db.numeros[n];
-
-        if (item.estado === "reservado") {
-
-            let diff = Date.now() - item.time;
-
-            if (diff >= 10 * 60 * 1000) {
-
-                delete db.numeros[n];
-                db.total -= 3000;
-
-                changed = true;
-            }
-        }
-    }
-
-    if (changed) {
-        save();
-        updateBoard();
-    }
-
-}, 5000);
-
-// =====================
-// 🔄 CRONÓMETRO EN VIVO
-setInterval(() => {
-    updateBoard();
-}, 4000);
-
-// =====================
 // 🎰 FINAL AUTOMÁTICO
 function checkFull() {
 
@@ -307,20 +263,3 @@ function checkFull() {
         bot.sendMessage(chatId, "🎰 INICIO DE BINGO");
     }
 }
-
-// =====================
-// 🎛 ADMIN
-bot.onText(/\/admin/, (msg) => {
-
-    if (msg.from.id !== ADMIN_ID) return;
-
-    if (msg.chat.type !== "private") {
-        bot.sendMessage(msg.chat.id, "❌ Solo privado");
-        return;
-    }
-
-    bot.sendMessage(msg.chat.id,
-`🎛 PANEL ADMIN
-
-💰 Total: $${db.total}`);
-});
