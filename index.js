@@ -4,14 +4,14 @@ const fs = require("fs");
 const token = process.env.TOKEN;
 const ADMIN_ID = Number(process.env.ADMIN_ID);
 
-if (global.__RUNNING__) process.exit(0);
-global.__RUNNING__ = true;
+if (global.__RUN__) process.exit(0);
+global.__RUN__ = true;
 
 const bot = new TelegramBot(token, {
     polling: { autoStart: true, interval: 2000 }
 });
 
-console.log("🎰 CASINO PRIVADO ADMIN ONLINE");
+console.log("🎰 CASINO PRIVADO FINAL ONLINE");
 
 // =====================
 const DB_FILE = "./data.json";
@@ -45,7 +45,13 @@ function user(u) {
 }
 
 // =====================
-// 🧼 TABLERO SOLO USUARIOS (SIN BOTONES ADMIN)
+// 🧠 SOLO PRIVADO CHECK
+function isPrivate(msg) {
+    return msg.chat.type === "private";
+}
+
+// =====================
+// 🧼 TABLERO LIMPIO (SIN BOTONES EXTRA)
 function boardUser() {
 
     let kb = [];
@@ -62,11 +68,7 @@ function boardUser() {
         if (n.estado === "pagado") {
             kb.push([{ text: `✅ ${i}- PAGADO`, callback_data: "ignore" }]);
         } else {
-
-            let t = 600000 - (Date.now() - n.start);
-            let m = Math.max(0, Math.floor(t / 60000));
-
-            kb.push([{ text: `⛔ ${i}- ${n.name} ⏱ ${m}m`, callback_data: "ignore" }]);
+            kb.push([{ text: `⛔ ${i}- OCUPADO`, callback_data: "ignore" }]);
         }
     }
 
@@ -74,6 +76,7 @@ function boardUser() {
 }
 
 // =====================
+// 🔄 UPDATE TABLERO
 function updateBoard() {
 
     if (!chatId || !messageId) return;
@@ -108,7 +111,7 @@ function startTimer(n) {
 }
 
 // =====================
-// 🔥 SOLD OUT CHECK
+// 🔥 CHECK SOLD OUT
 function checkSoldOut() {
 
     if (bingoActive) return;
@@ -120,7 +123,7 @@ function checkSoldOut() {
     bingoActive = true;
 
     bot.sendMessage(chatId,
-`🎉🔥 NÚMEROS VENDIDOS COMPLETOS 🔥🎉
+`🎉🔥 SOLD OUT COMPLETO 🔥🎉
 
 🚀 INICIANDO BINGO...`);
 
@@ -146,7 +149,7 @@ function startBingo() {
 }
 
 // =====================
-// 🚀 START TABLERO
+// 🚀 START
 bot.onText(/\/bingo/, async (msg) => {
 
     chatId = msg.chat.id;
@@ -160,7 +163,7 @@ bot.onText(/\/bingo/, async (msg) => {
 });
 
 // =====================
-// 🎯 CALLBACKS USUARIOS
+// 🎯 CALLBACKS
 bot.on("callback_query", (q) => {
 
     bot.answerCallbackQuery(q.id).catch(()=>{});
@@ -218,10 +221,9 @@ bot.on("message", (msg) => {
     bot.sendMessage(chatId, "🔍 COMPROBANDO PAGO...");
 
     bot.sendPhoto(chatId, file, {
-        caption: `📥 PAGO\n🎰 ${nums.join(", ")}`
+        caption: `📥 COMPROBANTE\n🎰 ${nums.join(", ")}`
     });
 
-    // simular aprobación automática para demo
     setTimeout(() => {
 
         nums.forEach(n => {
@@ -239,13 +241,8 @@ bot.on("message", (msg) => {
 });
 
 // =====================
-// 🛠 ADMIN SOLO EN BOT PRIVADO (SIN GRUPO)
+// 🛠 COMANDOS SOLO PRIVADO 🤖
 
-function isPrivate(msg) {
-    return msg.chat.type === "private";
-}
-
-// ⚡ PAYALL
 bot.onText(/\/payall/, (msg) => {
 
     if (!isPrivate(msg)) return;
@@ -268,7 +265,8 @@ bot.onText(/\/payall/, (msg) => {
     bot.sendMessage(msg.chat.id, "⚡ TODOS PAGADOS");
 });
 
-// 🔄 RESET
+// --------------------
+
 bot.onText(/\/reset/, (msg) => {
 
     if (!isPrivate(msg)) return;
@@ -283,7 +281,8 @@ bot.onText(/\/reset/, (msg) => {
     bot.sendMessage(msg.chat.id, "🔄 REINICIADO");
 });
 
-// 📊 STATUS
+// --------------------
+
 bot.onText(/\/status/, (msg) => {
 
     if (!isPrivate(msg)) return;
