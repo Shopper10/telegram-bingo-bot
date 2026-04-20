@@ -226,7 +226,7 @@ bot.on('callback_query', (query) => {
 
 🎰 ${num}
 👤 ${numeros[num].user.name}
-
+ENVIAR COMPROBANTE PAGO AL GRUPO SINO SE CANCELA EN 10MIN Y VUELVE DISPONIBLE EL NUMERO 
 💰 Nequi: 3123902322
 ⏱ 10 min`);
 
