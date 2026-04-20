@@ -94,13 +94,13 @@ function repost() {
 // =====================
 function todosVendidos() {
 
-    let c = 0;
-
     for (let i = 1; i <= 15; i++) {
-        if (numeros[i] && numeros[i].estado === "pagado") c++;
+        if (!numeros[i] || numeros[i].estado !== "pagado") {
+            return false;
+        }
     }
 
-    return c === 15;
+    return true;
 }
 
 // =====================
@@ -115,11 +115,11 @@ function iniciarBingo() {
 `🎉 TODOS LOS NÚMEROS VENDIDOS
 🎰 INICIA BINGO`);
 
-    setTimeout(sacar, 2500);
+    setTimeout(sacarNumero, 2500);
 }
 
 // =====================
-function sacar() {
+function sacarNumero() {
 
     if (!bingoActivo) return;
 
@@ -157,10 +157,10 @@ function sacar() {
         }
     }
 
-    setTimeout(sacar, 2500);
+    setTimeout(sacarNumero, 2500);
 }
 
-// =====================
+// ===================== TIMER CORREGIDO (CLAVE)
 function timer(num) {
 
     startTimes[num] = Date.now();
@@ -169,18 +169,25 @@ function timer(num) {
 
     timers[num] = setTimeout(() => {
 
-        if (!numeros[num] || numeros[num].estado === "pagado") return;
+        const item = numeros[num];
 
-        const u = numeros[num].user.name;
+        if (!item || item.estado === "pagado") return;
+
+        const u = item.user.name;
 
         delete numeros[num];
+        delete timers[num];
+        delete startTimes[num];
 
         guardar();
 
         bot.sendMessage(tableroChatId,
-`⛔ LIBERADO
+`⛔ TIEMPO EXPIRADO
+
 🎰 ${num}
 👤 ${u}`);
+
+        repost();
 
     }, 600000);
 }
@@ -201,34 +208,16 @@ bot.onText(/\/bingo/, (msg) => {
     });
 });
 
-// ===================== ADMIN PANEL
-bot.onText(/\/admin/, (msg) => {
-
-    if (msg.from.id !== ADMIN_ID) return;
-
-    bot.sendMessage(msg.chat.id,
-`🛠 ADMIN PANEL PRO`, {
-        reply_markup: {
-            inline_keyboard: [
-                [{ text: "📊 DEBUG", callback_data: "admin_debug" }],
-                [{ text: "⚡ PAY ALL", callback_data: "admin_payall" }],
-                [{ text: "🔄 RESET", callback_data: "admin_reset" }],
-                [{ text: "🎰 FORCE BINGO", callback_data: "admin_bingo" }]
-            ]
-        }
-    });
-});
-
 // ===================== DEBUG
 bot.onText(/\/debug/, (msg) => {
 
-    let p=0,pn=0,r=0;
+    let p=0, pen=0, r=0;
 
     for (let i=1;i<=15;i++){
         const n=numeros[i];
         if(!n)continue;
         if(n.estado==="pagado")p++;
-        else if(n.estado==="pendiente")pn++;
+        else if(n.estado==="pendiente")pen++;
         else r++;
     }
 
@@ -236,13 +225,52 @@ bot.onText(/\/debug/, (msg) => {
 `🧠 DEBUG
 
 ✅ ${p}
-⏳ ${pn}
+⏳ ${pen}
 ⛔ ${r}
 
 📊 ${p}/15`);
 });
 
-// =====================
+// ===================== PAYALL (FIX FINAL)
+bot.onText(/\/payall/, (msg) => {
+
+    if (msg.from.id !== ADMIN_ID) return;
+
+    for (let i = 1; i <= 15; i++) {
+
+        if (!numeros[i]) {
+            numeros[i] = { user: { name: "ADMIN" }, estado: "pagado" };
+        } else {
+            numeros[i].estado = "pagado";
+        }
+
+        if (timers[i]) {
+            clearTimeout(timers[i]);
+            delete timers[i];
+        }
+
+        if (startTimes[i]) {
+            delete startTimes[i];
+        }
+    }
+
+    totalDinero = 15 * 3000;
+
+    guardar();
+
+    bot.sendMessage(msg.chat.id, "⚡ PAYALL EJECUTADO");
+
+    repost();
+
+    setTimeout(() => {
+        if (todosVendidos()) {
+            bot.sendMessage(tableroChatId, "🎉 TODOS PAGADOS");
+            iniciarBingo();
+        }
+    }, 1000);
+});
+
+// ===================== CALLBACKS
 bot.on('callback_query', (q) => {
 
     const d = q.data;
@@ -276,97 +304,51 @@ bot.on('callback_query', (q) => {
 
     const nums = d.split("_")[1]?.split("-") || [];
 
-    // ================= PAY ALL
-    if (d === "admin_payall") {
-
-        for (let i=1;i<=15;i++){
-            if(!numeros[i]){
-                numeros[i]={user:{name:"ADMIN"},estado:"pagado"};
-            } else {
-                numeros[i].estado="pagado";
-            }
-        }
-
-        totalDinero=15*3000;
-        guardar();
-
-        bot.sendMessage(tableroChatId,"⚡ TODOS PAGADOS");
-
-        repost();
-
-        setTimeout(()=> {
-            if(todosVendidos()) iniciarBingo();
-        },800);
-
-        return;
-    }
-
-    // ================= RESET
-    if (d === "admin_reset") {
-
-        numeros={};
-        totalDinero=0;
-        bingoActivo=false;
-        sorteados=[];
-
-        guardar();
-
-        bot.sendMessage(tableroChatId,"🔄 RESET OK");
-
-        repost();
-
-        return;
-    }
-
-    // ================= FORCE BINGO
-    if (d === "admin_bingo") {
-
-        iniciarBingo();
-        return;
-    }
-
-    // ================= DEBUG BUTTON
-    if (d === "admin_debug") {
-
-        bot.sendMessage(tableroChatId, "🧠 DEBUG USAR /debug");
-        return;
-    }
-
-    // ================= APPROVE
     if (d.startsWith("ok_")) {
 
-        nums.forEach(n=>{
-            if(numeros[n]){
-                numeros[n].estado="pagado";
-                totalDinero+=3000;
-                if(timers[n])clearTimeout(timers[n]);
+        nums.forEach(n => {
+            if (numeros[n]) {
+                numeros[n].estado = "pagado";
+                totalDinero += 3000;
+
+                if (timers[n]) {
+                    clearTimeout(timers[n]);
+                    delete timers[n];
+                }
+
+                if (startTimes[n]) delete startTimes[n];
             }
         });
 
         guardar();
 
-        bot.sendMessage(tableroChatId,"🔍 COMPROBANDO...");
+        bot.sendMessage(tableroChatId, "🔍 COMPROBANDO...");
 
         repost();
 
-        setTimeout(()=> {
-            if(todosVendidos()) iniciarBingo();
-        },1000);
+        setTimeout(() => {
+            if (todosVendidos()) iniciarBingo();
+        }, 1000);
 
         return;
     }
 
-    // ================= REJECT
     if (d.startsWith("no_")) {
 
-        nums.forEach(n=>{
+        nums.forEach(n => {
             delete numeros[n];
-            if(timers[n])clearTimeout(timers[n]);
+
+            if (timers[n]) {
+                clearTimeout(timers[n]);
+                delete timers[n];
+            }
+
+            if (startTimes[n]) delete startTimes[n];
         });
 
         guardar();
 
-        bot.sendMessage(tableroChatId,"❌ RECHAZADO");
+        bot.sendMessage(tableroChatId, "❌ RECHAZADO");
 
         repost();
 
@@ -377,37 +359,37 @@ bot.on('callback_query', (q) => {
 // ===================== PHOTO
 bot.on('message', (msg) => {
 
-    if(!msg.photo)return;
+    if (!msg.photo) return;
 
-    const id=msg.from.id;
-    const file=msg.photo[msg.photo.length-1].file_id;
+    const id = msg.from.id;
+    const file = msg.photo[msg.photo.length - 1].file_id;
 
-    let nums=[];
+    let nums = [];
 
-    for(let n in numeros){
-        const item=numeros[n];
+    for (let n in numeros) {
+        const item = numeros[n];
 
-        if(item.user.id===id &&
-        (item.estado==="reservado"||item.estado==="pendiente")){
+        if (item.user.id === id &&
+            (item.estado === "reservado" || item.estado === "pendiente")) {
             nums.push(n);
         }
     }
 
-    if(!nums.length)return;
+    if (!nums.length) return;
 
-    nums.forEach(n=>numeros[n].estado="pendiente");
+    nums.forEach(n => numeros[n].estado = "pendiente");
 
     guardar();
 
-    bot.sendMessage(tableroChatId,"🔍 COMPROBANDO PAGO...");
+    bot.sendMessage(tableroChatId, "🔍 COMPROBANDO PAGO...");
 
-    bot.sendPhoto(tableroChatId,file,{
-        caption:`📥 COMPROBANTE\n👤 ${user(msg.from)}\n🎰 ${nums.join(", ")}`,
-        reply_markup:{
-            inline_keyboard:[
+    bot.sendPhoto(tableroChatId, file, {
+        caption: `📥 COMPROBANTE\n👤 ${user(msg.from)}\n🎰 ${nums.join(", ")}`,
+        reply_markup: {
+            inline_keyboard: [
                 [
-                    {text:"🟢 APROBAR",callback_data:`ok_${nums.join("-")}`},
-                    {text:"🔴 RECHAZAR",callback_data:`no_${nums.join("-")}`}
+                    { text: "🟢 APROBAR", callback_data: `ok_${nums.join("-")}` },
+                    { text: "🔴 RECHAZAR", callback_data: `no_${nums.join("-")}` }
                 ]
             ]
         }
