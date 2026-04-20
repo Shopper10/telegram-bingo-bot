@@ -15,7 +15,6 @@ const DB_FILE = "./data.json";
 let db = { numeros: {}, total: 0 };
 let chatId = null;
 let messageId = null;
-let bingoActive = false;
 
 // =====================
 function load() {
@@ -34,24 +33,40 @@ function user(u) {
 }
 
 // =====================
-// ⏱ TIMER SEGUNDOS
-function getSecondsLeft(start) {
+// ⏱️ TIEMPO EN MINUTOS
+function getMinutesLeft(start) {
     const limit = 10 * 60 * 1000;
     const diff = limit - (Date.now() - start);
-    return diff > 0 ? Math.floor(diff / 1000) : 0;
+    return Math.ceil(diff / 60000);
 }
 
 // =====================
-// 🎰 BOTONES TABLERO
-function buildBoard() {
+// 📊 BARRA VISUAL
+function getBar(min) {
+
+    const total = 10;
+    const filled = Math.max(0, total - min);
+
+    let bar = "";
+
+    for (let i = 0; i < total; i++) {
+        bar += i < filled ? "🟩" : "⬜️";
+    }
+
+    return bar;
+}
+
+// =====================
+// 🎰 TABLERO CON BOTONES + BARRA
+function board() {
 
     let kb = [];
+    let alertMsg = false;
 
     for (let i = 1; i <= 15; i++) {
 
         const n = db.numeros[i];
 
-        // 🟢 DISPONIBLE
         if (!n) {
             kb.push([{
                 text: `🟢 ${i} - DISPONIBLE`,
@@ -60,16 +75,21 @@ function buildBoard() {
             continue;
         }
 
-        // ⛔ RESERVADO
         if (n.estado === "reservado") {
+
+            let min = getMinutesLeft(n.time);
+
+            if (min <= 0) continue;
+
+            if (min <= 2) alertMsg = true;
+
             kb.push([{
-                text: `⛔️ ${n.name} ⏱️ ${getSecondsLeft(n.time)}s`,
+                text: `⛔️ ${n.name} ⏱️ ${min}min ${getBar(min)}`,
                 callback_data: "wait"
             }]);
             continue;
         }
 
-        // 🔍 PENDIENTE
         if (n.estado === "pendiente") {
             kb.push([{
                 text: `🔍 ${n.name} COMPROBANDO`,
@@ -78,7 +98,6 @@ function buildBoard() {
             continue;
         }
 
-        // ✅ PAGADO
         if (n.estado === "pagado") {
             kb.push([{
                 text: `✅ ${n.name} PAGADO`,
@@ -87,12 +106,16 @@ function buildBoard() {
         }
     }
 
-    return {
-        inline_keyboard: kb
-    };
+    // 🔴 ALERTA GLOBAL
+    if (alertMsg && chatId) {
+        bot.sendMessage(chatId, "⚠️ HAY JUGADORES A PUNTO DE EXPIRAR (2 MIN O MENOS)");
+    }
+
+    return { inline_keyboard: kb };
 }
 
 // =====================
+// 🔄 UPDATE TABLERO
 function updateBoard() {
 
     if (!chatId || !messageId) return;
@@ -100,43 +123,35 @@ function updateBoard() {
     bot.editMessageText(`🎰 CASINO BINGO\n\n💰 Total: $${db.total}`, {
         chat_id: chatId,
         message_id: messageId,
-        reply_markup: buildBoard()
+        reply_markup: board()
     }).catch(()=>{});
 }
 
 // =====================
-// 🔥 SOLD OUT
-function checkSoldOut() {
+// 🧹 AUTO LIBERACIÓN
+function autoRelease() {
 
-    if (bingoActive) return;
+    let changed = false;
 
-    for (let i = 1; i <= 15; i++) {
-        if (!db.numeros[i]) return;
+    for (let i in db.numeros) {
+
+        let n = db.numeros[i];
+
+        if (n.estado === "reservado") {
+
+            let min = getMinutesLeft(n.time);
+
+            if (min <= 0) {
+                delete db.numeros[i];
+                changed = true;
+            }
+        }
     }
 
-    bingoActive = true;
-
-    bot.sendMessage(chatId,
-`🎉🔥 SOLD OUT COMPLETO 🔥🎉
-
-🚀 INICIANDO BINGO...`);
-
-    setTimeout(startBingo, 3000);
-}
-
-// =====================
-function startBingo() {
-
-    let nums = Array.from({ length: 15 }, (_, i) => i + 1);
-
-    let winner = nums[Math.floor(Math.random() * nums.length)];
-    let name = db.numeros[winner]?.name || "Sin registro";
-
-    bot.sendMessage(chatId,
-`🏆 BINGO FINAL 🏆
-
-🎰 ${winner}
-👤 ${name}`);
+    if (changed) {
+        save();
+        updateBoard();
+    }
 }
 
 // =====================
@@ -147,14 +162,14 @@ bot.onText(/\/bingo/, async (msg) => {
 
     const sent = await bot.sendMessage(chatId,
 `🎰 CASINO BINGO`, {
-        reply_markup: buildBoard()
+        reply_markup: board()
     });
 
     messageId = sent.message_id;
 });
 
 // =====================
-// 🎯 CLICK BOTONES
+// 🎯 COMPRA
 bot.on("callback_query", (q) => {
 
     bot.answerCallbackQuery(q.id).catch(()=>{});
@@ -212,7 +227,6 @@ bot.on("message", (msg) => {
 
         save();
         updateBoard();
-        checkSoldOut();
 
         bot.sendMessage(chatId, "✅ PAGOS APROBADOS");
 
@@ -220,9 +234,10 @@ bot.on("message", (msg) => {
 });
 
 // =====================
-// 🔁 LOOP TIMER + UPDATE
+// 🔁 LOOP SISTEMA
 setInterval(() => {
 
+    autoRelease();
     updateBoard();
 
-}, 2000);
+}, 5000);
