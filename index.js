@@ -5,14 +5,14 @@ const token = process.env.TOKEN;
 const ADMIN_ID = Number(process.env.ADMIN_ID);
 
 // 🔥 evitar doble instancia Railway
-if (global.__BOT_RUNNING__) process.exit(0);
-global.__BOT_RUNNING__ = true;
+if (global.__RUNNING__) process.exit(0);
+global.__RUNNING__ = true;
 
 const bot = new TelegramBot(token, {
     polling: { autoStart: true, interval: 2000 }
 });
 
-console.log("🎰 CASINO VEGAS ONLINE");
+console.log("🎰 CASINO FINAL ONLINE");
 
 // =====================
 const DB_FILE = "./data.json";
@@ -46,7 +46,7 @@ function user(u) {
 }
 
 // =====================
-// 🎰 TABLERO SOLO USUARIOS
+// 🎰 TABLERO SOLO USUARIOS (IMPORTANTE)
 function boardUser() {
 
     let kb = [];
@@ -61,7 +61,7 @@ function boardUser() {
         }
 
         if (n.estado === "pagado") {
-            kb.push([{ text: `✅ ${i}- PAGADO`, callback_data: "none" }]);
+            kb.push([{ text: `✅ ${i}- PAGADO`, callback_data: "ignore" }]);
         } else {
 
             let t = 600000 - (Date.now() - n.start);
@@ -69,7 +69,7 @@ function boardUser() {
 
             kb.push([{
                 text: `⛔ ${i}- ${n.name} ⏱ ${m}m`,
-                callback_data: "none"
+                callback_data: "ignore"
             }]);
         }
     }
@@ -78,7 +78,7 @@ function boardUser() {
 }
 
 // =====================
-// 🔄 ACTUALIZAR TABLERO (1 SOLO MENSAJE)
+// 🔄 ACTUALIZAR TABLERO (1 MENSAJE)
 function updateBoard() {
 
     if (!chatId || !messageId) return;
@@ -87,7 +87,7 @@ function updateBoard() {
 `🎰 CASINO BINGO PRO
 
 💰 Total: $${db.total}
-🎯 Estado activo`, {
+🎯 Activo`, {
         chat_id: chatId,
         message_id: messageId,
         reply_markup: { inline_keyboard: boardUser() }
@@ -113,66 +113,77 @@ function startTimer(n) {
 }
 
 // =====================
-// 🎰 RULETA VEGAS (ANIMADA)
+// 🎰 RULETA VEGAS (CORREGIDA)
 function ruletaVegas(chatId) {
 
     let nums = Array.from({ length: 15 }, (_, i) => i + 1);
 
     let text = "🎰 RULETA VEGAS...\n\n";
 
-    bot.sendMessage(chatId, text).then((msg) => {
+    bot.sendMessage(chatId, text).then((m) => {
 
-        let mid = msg.message_id;
+        let mid = m.message_id;
 
         let steps = 0;
+        let maxSteps = 25;
+        let delay = 80;
 
         let interval = setInterval(() => {
 
             let pick = nums[Math.floor(Math.random() * nums.length)];
 
-            text = `🎰 GIRANDO...\n\n➡️ ${pick}`;
-
-            bot.editMessageText(text, {
+            bot.editMessageText(
+`🎰 GIRANDO RULETA...\n\n➡️ ${pick}`, {
                 chat_id: chatId,
                 message_id: mid
             }).catch(()=>{});
 
             steps++;
 
-        }, 120);
+            if (steps > 10) delay += 40;
+            if (steps > 15) delay += 80;
 
-        setTimeout(() => {
+            if (steps >= maxSteps) {
 
-            clearInterval(interval);
+                clearInterval(interval);
 
-            let winner = nums[Math.floor(Math.random() * nums.length)];
-            let name = db.numeros[winner]?.name || "Sin registro";
+                let winner = nums[Math.floor(Math.random() * nums.length)];
+                let name = db.numeros[winner]?.name || "Sin registro";
 
-            let frames = [
-                "🎉 B I N G O 🎉",
-                "🎉 B I N G O 🎉🏆",
-                "🏆 GANADOR",
-                `🎰 ${winner}`,
-                `👤 ${name}`
-            ];
+                showWinner(mid, winner, name);
+            }
 
-            let i = 0;
-
-            let anim = setInterval(() => {
-
-                bot.editMessageText(frames[i], {
-                    chat_id: chatId,
-                    message_id: mid
-                }).catch(()=>{});
-
-                i++;
-
-                if (i >= frames.length) clearInterval(anim);
-
-            }, 900);
-
-        }, 9000);
+        }, delay);
     });
+}
+
+// =====================
+// 🏆 GANADOR ANIMADO
+function showWinner(mid, winner, name) {
+
+    let frames = [
+        "🎉 B I N G O 🎉",
+        "🎉 B I N G O 🎉🏆",
+        "🏆 GANADOR",
+        `🎰 ${winner}`,
+        `👤 ${name}`,
+        "🎉 FELICIDADES 🏆"
+    ];
+
+    let i = 0;
+
+    let anim = setInterval(() => {
+
+        bot.editMessageText(frames[i], {
+            chat_id: chatId,
+            message_id: mid
+        }).catch(()=>{});
+
+        i++;
+
+        if (i >= frames.length) clearInterval(anim);
+
+    }, 900);
 }
 
 // =====================
@@ -193,7 +204,7 @@ function checkSoldOut() {
 }
 
 // =====================
-// 🚀 START TABLERO
+// 🚀 START
 bot.onText(/\/bingo/, async (msg) => {
 
     chatId = msg.chat.id;
@@ -207,7 +218,7 @@ bot.onText(/\/bingo/, async (msg) => {
 });
 
 // =====================
-// 🛠 ADMIN PANEL (OCULTO)
+// 🛠 ADMIN SOLO (OCULTO)
 bot.onText(/^\/admin$/, (msg) => {
 
     if (msg.from.id !== ADMIN_ID) return;
@@ -234,7 +245,7 @@ bot.on("callback_query", (q) => {
 
     bot.answerCallbackQuery(q.id).catch(()=>{});
 
-    let d = q.data;
+    const d = q.data;
 
     // TOMAR NÚMERO
     if (d.startsWith("take_")) {
