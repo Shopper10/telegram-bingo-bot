@@ -58,7 +58,22 @@ function formatTiempo(ms) {
 }
 
 // =====================
-// TABLERO CASINO
+// ANIMACIÓN SIMPLE (SOLO CARGANDO)
+// =====================
+async function animacionCarga(chatId) {
+
+    let msg = await bot.sendMessage(chatId, "⏳ Cargando...");
+
+    await new Promise(r => setTimeout(r, 800));
+
+    await bot.editMessageText("⏳ Cargando...", {
+        chat_id: chatId,
+        message_id: msg.message_id
+    });
+}
+
+// =====================
+// TABLERO
 // =====================
 function generarTablero() {
 
@@ -75,12 +90,14 @@ function generarTablero() {
             const u = item.user.name;
 
             if (item.estado === "reservado" || item.estado === "pendiente") {
+
                 let restante = 600000 - (Date.now() - startTimes[i]);
-                text = `⛔ ${i} ${u} ⏱ ${formatTiempo(restante)}`;
+
+                text = `⛔ ${i} - ${u} ⏱ ${formatTiempo(restante)}`;
             }
 
             if (item.estado === "pagado") {
-                text = `🟡 ${i} ${u} ✔`;
+                text = `🟡 ${i} - ${u} ✔`;
             }
         }
 
@@ -91,14 +108,14 @@ function generarTablero() {
 }
 
 // =====================
-// REPOST TABLERO LIMPIO
+// REPINTAR TABLERO
 // =====================
 function repostTablero() {
 
     if (!tableroChatId) return;
 
     bot.sendMessage(tableroChatId,
-`🎰 TABLERO CASINO
+`🎰 CASINO BINGO
 
 💰 Total: $${totalDinero}`, {
         reply_markup: {
@@ -144,8 +161,8 @@ function iniciarTimer(num) {
         const user = item.user.name;
 
         delete numeros[num];
-        delete timers[num];
         delete startTimes[num];
+        delete timers[num];
         delete alertados[num];
 
         guardarDatos();
@@ -168,29 +185,6 @@ setInterval(() => {
 }, 6000);
 
 // =====================
-// START ANIM
-// =====================
-async function animacionCasino(chatId) {
-
-    const frames = [
-        "🎰 Iniciando casino...",
-        "🎲 Girando...",
-        "💰 Preparando sistema...",
-        "🎰 ONLINE"
-    ];
-
-    let msg = await bot.sendMessage(chatId, frames[0]);
-
-    for (let i = 1; i < frames.length; i++) {
-        await new Promise(r => setTimeout(r, 500));
-        await bot.editMessageText(frames[i], {
-            chat_id: chatId,
-            message_id: msg.message_id
-        });
-    }
-}
-
-// =====================
 // START
 // =====================
 cargarDatos();
@@ -199,10 +193,10 @@ bot.onText(/\/bingo/, async (msg) => {
 
     tableroChatId = msg.chat.id;
 
-    await animacionCasino(msg.chat.id);
+    await animacionCarga(msg.chat.id);
 
     const sent = await bot.sendMessage(msg.chat.id,
-`🎰 CASINO BINGO PRO
+`🎰 CASINO BINGO
 
 💰 Total: $${totalDinero}`, {
         reply_markup: {
@@ -214,30 +208,33 @@ bot.onText(/\/bingo/, async (msg) => {
 });
 
 // =====================
-// TOMAR NÚMERO
+// UN SOLO CALLBACK (FIX CRÍTICO)
 // =====================
-bot.on('callback_query', (query) => {
+bot.on('callback_query', async (query) => {
 
     const data = query.data;
 
-    if (!data.startsWith("num_")) return;
+    // =====================
+    // TOMAR NÚMERO
+    // =====================
+    if (data.startsWith("num_")) {
 
-    const num = parseInt(data.split("_")[1]);
+        const num = parseInt(data.split("_")[1]);
 
-    if (numeros[num]) return;
+        if (numeros[num]) return;
 
-    numeros[num] = {
-        user: {
-            id: query.from.id,
-            name: getUser(query.from)
-        },
-        estado: "reservado"
-    };
+        numeros[num] = {
+            user: {
+                id: query.from.id,
+                name: getUser(query.from)
+            },
+            estado: "reservado"
+        };
 
-    iniciarTimer(num);
-    guardarDatos();
+        iniciarTimer(num);
+        guardarDatos();
 
-    bot.sendMessage(tableroChatId,
+        bot.sendMessage(tableroChatId,
 `🎰 TOMADO
 
 🎰 ${num}
@@ -245,21 +242,18 @@ bot.on('callback_query', (query) => {
 
 💰 Nequi: 3123902322
 ⏱ 10 min`);
-});
 
-// =====================
-// ADMIN CONTROL
-// =====================
-bot.on('callback_query', (query) => {
+        return;
+    }
 
     if (query.from.id !== ADMIN_ID) return;
 
-    const data = query.data;
+    const nums = data.split("_")[1]?.split("-") || [];
 
-    // ✅ APROBAR
+    // =====================
+    // APROBAR
+    // =====================
     if (data.startsWith("ok_")) {
-
-        const nums = data.split("_")[1].split("-");
 
         nums.forEach(n => {
             if (numeros[n]) {
@@ -271,21 +265,20 @@ bot.on('callback_query', (query) => {
 
         guardarDatos();
 
-        // 💥 MENSAJE CONFIRMADO
         bot.sendMessage(tableroChatId, "✅ CONFIRMADO ✔").then(msg => {
-
             setTimeout(() => {
                 bot.deleteMessage(tableroChatId, msg.message_id).catch(() => {});
-            }, 3000);
+            }, 2500);
         });
 
         repostTablero();
+        return;
     }
 
-    // ❌ RECHAZAR
+    // =====================
+    // RECHAZAR
+    // =====================
     if (data.startsWith("no_")) {
-
-        const nums = data.split("_")[1].split("-");
 
         nums.forEach(n => {
             delete numeros[n];
@@ -297,11 +290,12 @@ bot.on('callback_query', (query) => {
         bot.sendMessage(tableroChatId, "❌ RECHAZADO");
 
         repostTablero();
+        return;
     }
 });
 
 // =====================
-// FOTO + RUEDA
+// FOTO (ESTABLE)
 // =====================
 bot.on('message', async (msg) => {
 
@@ -334,18 +328,7 @@ bot.on('message', async (msg) => {
 
     guardarDatos();
 
-    let anim = await bot.sendMessage(msg.chat.id, "🎰 VALIDANDO PAGO...");
-
-    const fx = ["🎰", "🎲", "💰 CASINO CHECK"];
-
-    for (let i = 0; i < fx.length; i++) {
-        await new Promise(r => setTimeout(r, 500));
-
-        await bot.editMessageText(fx[i], {
-            chat_id: msg.chat.id,
-            message_id: anim.message_id
-        });
-    }
+    await bot.sendMessage(msg.chat.id, "⏳ Cargando...");
 
     bot.sendPhoto(tableroChatId, fileId, {
         caption:
@@ -354,7 +337,7 @@ bot.on('message', async (msg) => {
 👤 ${getUser(msg.from)}
 🎰 ${nums.join(", ")}
 
-⚠️ EN REVISIÓN`,
+⏳ EN REVISIÓN`,
         reply_markup: {
             inline_keyboard: [
                 [
