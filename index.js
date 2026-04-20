@@ -13,7 +13,6 @@ const bot = new TelegramBot(token, {
 
 const DB_FILE = "./data.json";
 
-// =====================
 let db = { numeros: {}, total: 0 };
 let chatId = null;
 let messageId = null;
@@ -30,11 +29,12 @@ function save() {
 load();
 
 // =====================
-function user(u) {
+function getUser(u) {
     return u.username ? `@${u.username}` : u.first_name;
 }
 
 // =====================
+// ⏱ 10 MIN
 function getMinutesLeft(start) {
     const limit = 10 * 60 * 1000;
     const diff = limit - (Date.now() - start);
@@ -42,32 +42,44 @@ function getMinutesLeft(start) {
 }
 
 // =====================
-// 🎰 TABLERO
-function board() {
+// 🎰 TABLERO (MISMO FORMATO ORIGINAL)
+function generarTablero() {
 
     let kb = [];
 
     for (let i = 1; i <= 15; i++) {
 
-        const n = db.numeros[i];
+        const item = db.numeros[i];
 
-        if (!n) {
-            kb.push([{ text: `🟢 ${i} DISPONIBLE`, callback_data: `buy_${i}` }]);
+        if (!item) {
+            kb.push([{
+                text: `🟢 ${i} - DISPONIBLE`,
+                callback_data: `buy_${i}`
+            }]);
             continue;
         }
 
-        if (n.estado === "reservado") {
-            kb.push([{ text: `⛔️ ${n.name} ⏱ ${getMinutesLeft(n.time)}min`, callback_data: "wait" }]);
+        if (item.estado === "reservado") {
+            kb.push([{
+                text: `⛔️ ${i} - ${item.name} ⏱ ${getMinutesLeft(item.time)}min`,
+                callback_data: "wait"
+            }]);
             continue;
         }
 
-        if (n.estado === "pendiente") {
-            kb.push([{ text: `🔍 ${n.name} COMPROBANDO`, callback_data: "wait" }]);
+        if (item.estado === "pendiente") {
+            kb.push([{
+                text: `🔍 ${i} - ${item.name} COMPROBANDO`,
+                callback_data: "wait"
+            }]);
             continue;
         }
 
-        if (n.estado === "pagado") {
-            kb.push([{ text: `✅ ${n.name} PAGADO`, callback_data: "wait" }]);
+        if (item.estado === "pagado") {
+            kb.push([{
+                text: `✅ ${i} - ${item.name} PAGADO`,
+                callback_data: "wait"
+            }]);
         }
     }
 
@@ -79,15 +91,34 @@ function updateBoard() {
 
     if (!chatId || !messageId) return;
 
-    bot.editMessageText(`🎰 CASINO BINGO\n\n💰 Total: $${db.total}`, {
+    bot.editMessageText(
+`🎰 CASINO BINGO
+
+💰 Total: $${db.total}`, {
         chat_id: chatId,
         message_id: messageId,
-        reply_markup: board()
+        reply_markup: generarTablero()
     }).catch(()=>{});
 }
 
 // =====================
-// 🎰 COMPRA
+// 🚀 INICIAR BINGO
+bot.onText(/\/bingo/, async (msg) => {
+
+    if (msg.from.id !== ADMIN_ID) return;
+
+    chatId = msg.chat.id;
+
+    const sent = await bot.sendMessage(chatId,
+`🎰 CASINO BINGO`, {
+        reply_markup: generarTablero()
+    });
+
+    messageId = sent.message_id;
+});
+
+// =====================
+// 🎯 COMPRA
 bot.on("callback_query", (q) => {
 
     bot.answerCallbackQuery(q.id).catch(()=>{});
@@ -99,7 +130,7 @@ bot.on("callback_query", (q) => {
     if (db.numeros[n]) return;
 
     db.numeros[n] = {
-        name: user(q.from),
+        name: getUser(q.from),
         estado: "reservado",
         time: Date.now()
     };
@@ -116,7 +147,7 @@ bot.on("callback_query", (q) => {
 });
 
 // =====================
-// 📸 COMPROBANTE (solo aviso)
+// 📸 COMPROBANTE
 bot.on("message", (msg) => {
 
     if (!msg.photo) return;
@@ -124,7 +155,8 @@ bot.on("message", (msg) => {
     let nums = [];
 
     for (let n in db.numeros) {
-        if (db.numeros[n].name === user(msg.from)) {
+
+        if (db.numeros[n].name === getUser(msg.from)) {
             db.numeros[n].estado = "pendiente";
             nums.push(n);
         }
@@ -142,69 +174,79 @@ bot.on("message", (msg) => {
 });
 
 // =====================
-// 🚀 /BINGO
-bot.onText(/\/bingo/, async (msg) => {
+// 🎛 PANEL ADMIN
+bot.onText(/\/admin/, (msg) => {
 
     if (msg.from.id !== ADMIN_ID) return;
 
-    chatId = msg.chat.id;
+    bot.sendMessage(msg.chat.id,
+`🎛 PANEL ADMIN
 
-    db.numeros = {};
-    save();
-
-    const sent = await bot.sendMessage(chatId,
-`🎰 NUEVA PARTIDA BINGO`, {
-        reply_markup: board()
+💰 Total: $${db.total}
+🎰 Números activos: ${Object.keys(db.numeros).length}`, {
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: "🎰 Nueva partida", callback_data: "admin_new" },
+                    { text: "♻ Reset", callback_data: "admin_reset" }
+                ],
+                [
+                    { text: "💰 Pay all", callback_data: "admin_payall" },
+                    { text: "📊 Estado", callback_data: "admin_state" }
+                ]
+            ]
+        }
     });
-
-    messageId = sent.message_id;
 });
 
 // =====================
-// ♻ /RESET
-bot.onText(/\/reset/, (msg) => {
+// 👮 ACCIONES ADMIN
+bot.on("callback_query", (q) => {
 
-    if (msg.from.id !== ADMIN_ID) return;
+    if (q.from.id !== ADMIN_ID) return;
 
-    db = { numeros: {}, total: 0 };
-    save();
+    let d = q.data;
 
-    updateBoard();
+    // 🎰 NUEVA PARTIDA
+    if (d === "admin_new") {
 
-    bot.sendMessage(msg.chat.id, "♻ SISTEMA REINICIADO");
-});
-
-// =====================
-// 💰 /PAYALL
-bot.onText(/\/payall/, (msg) => {
-
-    if (msg.from.id !== ADMIN_ID) return;
-
-    for (let n in db.numeros) {
-        db.numeros[n].estado = "pagado";
-    }
-
-    save();
-    updateBoard();
-
-    bot.sendMessage(msg.chat.id, "💰 TODOS MARCADOS COMO PAGADOS");
-});
-
-// =====================
-// 🎯 /PAY X
-bot.onText(/\/pay (\d+)/, (msg, match) => {
-
-    if (msg.from.id !== ADMIN_ID) return;
-
-    let num = match[1];
-
-    if (db.numeros[num]) {
-        db.numeros[num].estado = "pagado";
+        db.numeros = {};
         save();
         updateBoard();
 
-        bot.sendMessage(msg.chat.id, `✅ NÚMERO ${num} PAGADO`);
-    } else {
-        bot.sendMessage(msg.chat.id, "❌ NÚMERO NO EXISTE");
+        bot.sendMessage(chatId, "🎰 NUEVA PARTIDA INICIADA");
+    }
+
+    // ♻ RESET
+    if (d === "admin_reset") {
+
+        db = { numeros: {}, total: 0 };
+        save();
+        updateBoard();
+
+        bot.sendMessage(chatId, "♻ SISTEMA REINICIADO");
+    }
+
+    // 💰 PAY ALL
+    if (d === "admin_payall") {
+
+        for (let n in db.numeros) {
+            db.numeros[n].estado = "pagado";
+        }
+
+        save();
+        updateBoard();
+
+        bot.sendMessage(chatId, "💰 TODOS PAGADOS");
+    }
+
+    // 📊 ESTADO
+    if (d === "admin_state") {
+
+        bot.sendMessage(chatId,
+`📊 ESTADO
+
+💰 Total: $${db.total}
+🎰 Activos: ${Object.keys(db.numeros).length}`);
     }
 });
