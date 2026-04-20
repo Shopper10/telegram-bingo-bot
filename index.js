@@ -4,23 +4,19 @@ const fs = require("fs");
 const token = process.env.TOKEN;
 const ADMIN_ID = Number(process.env.ADMIN_ID);
 
-// 🔥 EVITA DOBLE INSTANCIA EN RAILWAY
-if (global.__botRunning) {
-    console.log("BOT YA ESTÁ CORRIENDO");
+// 🔥 EVITA DOBLE BOT EN RAILWAY
+if (global.__BOT__) {
+    console.log("BOT YA ACTIVO");
     process.exit(0);
 }
-global.__botRunning = true;
+global.__BOT__ = true;
 
 // 🔥 BOT ESTABLE
 const bot = new TelegramBot(token, {
-    polling: {
-        autoStart: true,
-        interval: 2000,
-        params: { timeout: 10 }
-    }
+    polling: { autoStart: true, interval: 2000 }
 });
 
-console.log("🤖 CASINO BOT ONLINE");
+console.log("🤖 CASINO PRO ONLINE");
 
 // =====================
 const DB_FILE = "./data.json";
@@ -35,7 +31,7 @@ let timers = {};
 
 // =====================
 // LOAD / SAVE
-function loadDB() {
+function load() {
     try {
         if (fs.existsSync(DB_FILE)) {
             db = JSON.parse(fs.readFileSync(DB_FILE));
@@ -43,14 +39,14 @@ function loadDB() {
     } catch {}
 }
 
-function saveDB() {
+function save() {
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
 }
 
-loadDB();
+load();
 
 // =====================
-// USER NAME
+// USER
 function getUser(u) {
     return u.username ? `@${u.username}` : u.first_name;
 }
@@ -85,7 +81,7 @@ function board() {
 }
 
 // =====================
-// REPOST TABLERO
+// REPOST
 function repost() {
 
     if (!chatId) return;
@@ -112,10 +108,10 @@ function startTimer(num) {
 
         delete db.numeros[num];
 
-        saveDB();
+        save();
         repost();
 
-        bot.sendMessage(chatId, `⛔ ${num} liberado por tiempo`);
+        bot.sendMessage(chatId, `⛔ ${num} liberado`);
 
     }, 600000);
 }
@@ -129,39 +125,6 @@ bot.onText(/\/bingo/, (msg) => {
     bot.sendMessage(chatId, "🎰 BINGO INICIADO", {
         reply_markup: { inline_keyboard: board() }
     });
-});
-
-// =====================
-// TEST
-bot.onText(/\/test/, (msg) => {
-    bot.sendMessage(msg.chat.id, "✅ BOT FUNCIONA");
-});
-
-// =====================
-// PAYALL
-bot.onText(/\/payall/, (msg) => {
-
-    if (msg.from.id !== ADMIN_ID) return;
-
-    for (let i = 1; i <= 15; i++) {
-
-        if (!db.numeros[i]) {
-            db.numeros[i] = {
-                user: "ADMIN",
-                estado: "pagado",
-                start: Date.now()
-            };
-        } else {
-            db.numeros[i].estado = "pagado";
-        }
-    }
-
-    db.total = 15 * 3000;
-
-    saveDB();
-    repost();
-
-    bot.sendMessage(msg.chat.id, "⚡ PAYALL OK");
 });
 
 // =====================
@@ -185,7 +148,7 @@ bot.on("callback_query", (q) => {
         };
 
         startTimer(n);
-        saveDB();
+        save();
         repost();
 
         bot.sendMessage(chatId,
@@ -209,7 +172,7 @@ bot.on("callback_query", (q) => {
 
         db.total += nums.length * 3000;
 
-        saveDB();
+        save();
         repost();
     }
 
@@ -217,7 +180,7 @@ bot.on("callback_query", (q) => {
 
         nums.forEach(n => delete db.numeros[n]);
 
-        saveDB();
+        save();
         repost();
     }
 });
@@ -241,7 +204,7 @@ bot.on("message", (msg) => {
 
     if (!nums.length) return;
 
-    saveDB();
+    save();
 
     bot.sendMessage(chatId, "🔍 COMPROBANDO PAGO...");
 
@@ -251,28 +214,103 @@ bot.on("message", (msg) => {
             inline_keyboard: [
                 [
                     { text: "🟢 APROBAR", callback_data: `ok_${nums.join("-")}` },
-                    { text: "🔴 RECHAZAR", callback_data: `no_${nums.const TelegramBot = require("node-telegram-bot-api");
-
-const token = process.env.TOKEN;
-
-// 🔥 ANTI DOBLE INSTANCIA REAL
-if (global.__BOT_ACTIVE__) {
-    console.log("BOT YA ACTIVO - SALIENDO");
-    process.exit(0);
-}
-global.__BOT_ACTIVE__ = true;
-
-// 🔥 BORRA WEBHOOKS ANTES DE POLLING (CLAVE)
-const bot = new TelegramBot(token);
-
-bot.deleteWebHook().then(() => {
-    console.log("WEBHOOK LIMPIADO");
-    startBot();
+                    { text: "🔴 RECHAZAR", callback_data: `no_${nums.join("-")}` }
+                ]
+            ]
+        }
+    });
 });
 
-function startBot() {
+// =====================
+// COMMANDS PRO
 
-    bot.startPolling();
+// PAYALL
+bot.onText(/\/payall/, (msg) => {
 
-    console.log("BOT INICIADO LIMPIO");
-}
+    if (msg.from.id !== ADMIN_ID) return;
+
+    for (let i = 1; i <= 15; i++) {
+        if (!db.numeros[i]) {
+            db.numeros[i] = { user: "ADMIN", estado: "pagado", start: Date.now() };
+        } else {
+            db.numeros[i].estado = "pagado";
+        }
+    }
+
+    db.total = 15 * 3000;
+
+    save();
+    repost();
+
+    bot.sendMessage(msg.chat.id, "⚡ PAYALL OK");
+});
+
+// PAY SPECIFIC
+bot.onText(/\/pay (.+)/, (msg, match) => {
+
+    if (msg.from.id !== ADMIN_ID) return;
+
+    const nums = match[1].split(" ");
+
+    nums.forEach(n => {
+        if (db.numeros[n]) {
+            db.numeros[n].estado = "pagado";
+            db.total += 3000;
+        }
+    });
+
+    save();
+    repost();
+
+    bot.sendMessage(msg.chat.id, "✅ PAGADOS");
+});
+
+// REMOVE
+bot.onText(/\/remove (.+)/, (msg, match) => {
+
+    if (msg.from.id !== ADMIN_ID) return;
+
+    match[1].split(" ").forEach(n => delete db.numeros[n]);
+
+    save();
+    repost();
+
+    bot.sendMessage(msg.chat.id, "🗑 ELIMINADOS");
+});
+
+// RESET
+bot.onText(/\/reset/, (msg) => {
+
+    if (msg.from.id !== ADMIN_ID) return;
+
+    db = { numeros: {}, total: 0 };
+
+    save();
+    repost();
+
+    bot.sendMessage(msg.chat.id, "🔄 RESET OK");
+});
+
+// STATUS
+bot.onText(/\/status/, (msg) => {
+
+    const libres = 15 - Object.keys(db.numeros).length;
+
+    bot.sendMessage(msg.chat.id,
+`📊 STATUS
+
+💰 Total: $${db.total}
+🟢 Libres: ${libres}
+🎰 Ocupados: ${Object.keys(db.numeros).length}`);
+});
+
+// DEBUG
+bot.onText(/\/debug/, (msg) => {
+
+    if (msg.from.id !== ADMIN_ID) return;
+
+    bot.sendMessage(msg.chat.id,
+`🧠 DEBUG
+
+${JSON.stringify(db, null, 2)}`);
+});
