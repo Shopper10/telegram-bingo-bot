@@ -30,9 +30,7 @@ function cargarDatos() {
             numeros = data.numeros || {};
             totalDinero = data.totalDinero || 0;
         }
-    } catch (e) {
-        console.log("Error:", e.message);
-    }
+    } catch (e) {}
 }
 
 function guardarDatos() {
@@ -60,31 +58,6 @@ function formatTiempo(ms) {
 }
 
 // =====================
-// ANIMACIÓN CASINO
-// =====================
-async function animacionCasino(chatId) {
-
-    const frames = [
-        "🎰 Iniciando casino...",
-        "🎲 Girando ruleta...",
-        "🎰 █▒▒▒▒▒▒",
-        "🎰 ███▒▒▒▒",
-        "🎰 █████▒▒",
-        "💰 CASINO ONLINE"
-    ];
-
-    let msg = await bot.sendMessage(chatId, frames[0]);
-
-    for (let i = 1; i < frames.length; i++) {
-        await new Promise(r => setTimeout(r, 500));
-        await bot.editMessageText(frames[i], {
-            chat_id: chatId,
-            message_id: msg.message_id
-        });
-    }
-}
-
-// =====================
 // TABLERO CASINO
 // =====================
 function generarTablero() {
@@ -95,21 +68,19 @@ function generarTablero() {
 
         const item = numeros[i];
 
-        let text = `🟢🎰 ${i} DISPONIBLE`;
+        let text = `🟢 ${i} DISPONIBLE`;
 
         if (item) {
 
             const u = item.user.name;
 
             if (item.estado === "reservado" || item.estado === "pendiente") {
-
                 let restante = 600000 - (Date.now() - startTimes[i]);
-
-                text = `🔴🎰 ${i} ${u} ⏱ ${formatTiempo(restante)}`;
+                text = `⛔ ${i} ${u} ⏱ ${formatTiempo(restante)}`;
             }
 
             if (item.estado === "pagado") {
-                text = `🟡💰 ${i} ${u}`;
+                text = `🟡 ${i} ${u} ✔`;
             }
         }
 
@@ -120,9 +91,9 @@ function generarTablero() {
 }
 
 // =====================
-// REENVIAR TABLERO
+// REPOST TABLERO LIMPIO
 // =====================
-function reenviarTablero() {
+function repostTablero() {
 
     if (!tableroChatId) return;
 
@@ -139,12 +110,28 @@ function reenviarTablero() {
 }
 
 // =====================
+// UPDATE BOTONES
+// =====================
+function actualizarTablero() {
+
+    if (!tableroChatId || !tableroMessageId) return;
+
+    bot.editMessageReplyMarkup(
+        { inline_keyboard: generarTablero() },
+        {
+            chat_id: tableroChatId,
+            message_id: tableroMessageId
+        }
+    ).catch(() => {});
+}
+
+// =====================
 // TIMER 10 MIN
 // =====================
 function iniciarTimer(num) {
 
     startTimes[num] = Date.now();
-    alertados[num] = { a2: false, a1: false };
+    alertados[num] = {};
 
     if (timers[num]) clearTimeout(timers[num]);
 
@@ -164,67 +151,43 @@ function iniciarTimer(num) {
         guardarDatos();
 
         bot.sendMessage(tableroChatId,
-`⛔️ LIBERADO
+`⛔ LIBERADO
 
 🎰 ${num}
-👤 ${user}
-⌛ Sin pago`);
+👤 ${user}`);
     }, 600000);
 }
 
 // =====================
-// LOOP ALERTAS
+// LOOP OPTIMIZADO
 // =====================
 setInterval(() => {
 
-    for (let i in numeros) {
-
-        const item = numeros[i];
-        if (!item) continue;
-
-        if (item.estado === "pagado") continue;
-
-        let restante = 600000 - (Date.now() - startTimes[i]);
-
-        if (!alertados[i]) continue;
-
-        if (restante <= 120000 && !alertados[i].a2) {
-            alertados[i].a2 = true;
-
-            bot.sendMessage(tableroChatId,
-`⚠️ 2 MIN
-
-🎰 ${i}`);
-        }
-
-        if (restante <= 60000 && !alertados[i].a1) {
-            alertados[i].a1 = true;
-
-            bot.sendMessage(tableroChatId,
-`🔥 ÚLTIMO MINUTO
-
-🎰 ${i}`);
-        }
-    }
-
     actualizarTablero();
 
-}, 2000);
+}, 6000);
 
 // =====================
-// UPDATE BOTONES
+// START ANIM
 // =====================
-function actualizarTablero() {
+async function animacionCasino(chatId) {
 
-    if (!tableroChatId || !tableroMessageId) return;
+    const frames = [
+        "🎰 Iniciando casino...",
+        "🎲 Girando...",
+        "💰 Preparando sistema...",
+        "🎰 ONLINE"
+    ];
 
-    bot.editMessageReplyMarkup(
-        { inline_keyboard: generarTablero() },
-        {
-            chat_id: tableroChatId,
-            message_id: tableroMessageId
-        }
-    ).catch(() => {});
+    let msg = await bot.sendMessage(chatId, frames[0]);
+
+    for (let i = 1; i < frames.length; i++) {
+        await new Promise(r => setTimeout(r, 500));
+        await bot.editMessageText(frames[i], {
+            chat_id: chatId,
+            message_id: msg.message_id
+        });
+    }
 }
 
 // =====================
@@ -241,8 +204,7 @@ bot.onText(/\/bingo/, async (msg) => {
     const sent = await bot.sendMessage(msg.chat.id,
 `🎰 CASINO BINGO PRO
 
-💰 Total: $${totalDinero}
-🔥 ONLINE`, {
+💰 Total: $${totalDinero}`, {
         reply_markup: {
             inline_keyboard: generarTablero()
         }
@@ -282,12 +244,11 @@ bot.on('callback_query', (query) => {
 👤 ${numeros[num].user.name}
 
 💰 Nequi: 3123902322
-📸 Envía pago
 ⏱ 10 min`);
 });
 
 // =====================
-// ADMIN
+// ADMIN CONTROL
 // =====================
 bot.on('callback_query', (query) => {
 
@@ -295,6 +256,7 @@ bot.on('callback_query', (query) => {
 
     const data = query.data;
 
+    // ✅ APROBAR
     if (data.startsWith("ok_")) {
 
         const nums = data.split("_")[1].split("-");
@@ -309,14 +271,18 @@ bot.on('callback_query', (query) => {
 
         guardarDatos();
 
-        bot.sendMessage(tableroChatId,
-`✅ APROBADO
+        // 💥 MENSAJE CONFIRMADO
+        bot.sendMessage(tableroChatId, "✅ CONFIRMADO ✔").then(msg => {
 
-🎰 ${nums.join(", ")}`);
+            setTimeout(() => {
+                bot.deleteMessage(tableroChatId, msg.message_id).catch(() => {});
+            }, 3000);
+        });
 
-        reenviarTablero();
+        repostTablero();
     }
 
+    // ❌ RECHAZAR
     if (data.startsWith("no_")) {
 
         const nums = data.split("_")[1].split("-");
@@ -328,15 +294,14 @@ bot.on('callback_query', (query) => {
 
         guardarDatos();
 
-        bot.sendMessage(tableroChatId,
-`❌ RECHAZADO`);
+        bot.sendMessage(tableroChatId, "❌ RECHAZADO");
 
-        reenviarTablero();
+        repostTablero();
     }
 });
 
 // =====================
-// FOTO + RUEDA CASINO
+// FOTO + RUEDA
 // =====================
 bot.on('message', async (msg) => {
 
@@ -369,11 +334,9 @@ bot.on('message', async (msg) => {
 
     guardarDatos();
 
-    // 🎰 animación casino
-    let anim = await bot.sendMessage(msg.chat.id,
-`🎰 COMPROBANTE RECIBIDO`);
+    let anim = await bot.sendMessage(msg.chat.id, "🎰 VALIDANDO PAGO...");
 
-    const fx = ["🎰", "🎲", "🎰🎲", "💰 CASINO CHECK"];
+    const fx = ["🎰", "🎲", "💰 CASINO CHECK"];
 
     for (let i = 0; i < fx.length; i++) {
         await new Promise(r => setTimeout(r, 500));
@@ -386,12 +349,12 @@ bot.on('message', async (msg) => {
 
     bot.sendPhoto(tableroChatId, fileId, {
         caption:
-`📥 COMPROBANTE CASINO
+`📥 COMPROBANTE
 
 👤 ${getUser(msg.from)}
 🎰 ${nums.join(", ")}
 
-⚠️ ADMIN REVISA`,
+⚠️ EN REVISIÓN`,
         reply_markup: {
             inline_keyboard: [
                 [
