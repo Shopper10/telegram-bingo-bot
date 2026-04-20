@@ -13,6 +13,7 @@ const bot = new TelegramBot(token, {
 
 const DB_FILE = "./data.json";
 
+// =====================
 let db = { numeros: {}, total: 0 };
 let chatId = null;
 let messageId = null;
@@ -51,17 +52,17 @@ function board() {
         const n = db.numeros[i];
 
         if (!n) {
-            kb.push([{ text: `🟢 ${i} - DISPONIBLE`, callback_data: `buy_${i}` }]);
+            kb.push([{ text: `🟢 ${i} DISPONIBLE`, callback_data: `buy_${i}` }]);
             continue;
         }
 
         if (n.estado === "reservado") {
-            kb.push([{ text: `⛔️ ${n.name} ⏱️ ${getMinutesLeft(n.time)}min`, callback_data: "wait" }]);
+            kb.push([{ text: `⛔️ ${n.name} ⏱ ${getMinutesLeft(n.time)}min`, callback_data: "wait" }]);
             continue;
         }
 
         if (n.estado === "pendiente") {
-            kb.push([{ text: `🔍 ${n.name} PENDIENTE`, callback_data: "wait" }]);
+            kb.push([{ text: `🔍 ${n.name} COMPROBANDO`, callback_data: "wait" }]);
             continue;
         }
 
@@ -86,20 +87,7 @@ function updateBoard() {
 }
 
 // =====================
-bot.onText(/\/bingo/, async (msg) => {
-
-    chatId = msg.chat.id;
-
-    const sent = await bot.sendMessage(chatId,
-`🎰 CASINO BINGO`, {
-        reply_markup: board()
-    });
-
-    messageId = sent.message_id;
-});
-
-// =====================
-// 🎯 COMPRA
+// 🎰 COMPRA
 bot.on("callback_query", (q) => {
 
     bot.answerCallbackQuery(q.id).catch(()=>{});
@@ -124,11 +112,11 @@ bot.on("callback_query", (q) => {
     bot.sendMessage(chatId,
 `💰 RESERVADO
 🎰 ${n}
-⏱️ 10 MIN`);
+⏱ 10 MIN`);
 });
 
 // =====================
-// 📸 COMPROBANTE → SOLO MENSAJE + BARRA
+// 📸 COMPROBANTE (solo aviso)
 bot.on("message", (msg) => {
 
     if (!msg.photo) return;
@@ -136,7 +124,6 @@ bot.on("message", (msg) => {
     let nums = [];
 
     for (let n in db.numeros) {
-
         if (db.numeros[n].name === user(msg.from)) {
             db.numeros[n].estado = "pendiente";
             nums.push(n);
@@ -147,94 +134,77 @@ bot.on("message", (msg) => {
 
     save();
 
-    let bar = [
-        "⬜️⬜️⬜️⬜️⬜️",
-        "🟩⬜️⬜️⬜️⬜️",
-        "🟩🟩⬜️⬜️⬜️",
-        "🟩🟩🟩⬜️⬜️",
-        "🟩🟩🟩🟩⬜️",
-        "🟩🟩🟩🟩🟩"
-    ];
-
-    let i = 0;
-
-    bot.sendMessage(chatId, "🔍 COMPROBANDO PAGO...\n⬜️⬜️⬜️⬜️⬜️").then((m) => {
-
-        let id = m.message_id;
-
-        let interval = setInterval(() => {
-
-            bot.editMessageText(
+    bot.sendMessage(chatId,
 `🔍 COMPROBANDO PAGO...
+🎰 ${nums.join(", ")}
 
-${bar[i]}
-
-🎰 Números: ${nums.join(", ")}`, {
-                chat_id: chatId,
-                message_id: id
-            }).catch(()=>{});
-
-            i++;
-
-            if (i >= bar.length) {
-
-                clearInterval(interval);
-
-                // 🔥 ENVIAR A APROBACIÓN ADMIN
-                bot.sendMessage(chatId,
-`📸 NUEVO PAGO EN REVISIÓN
-
-🎰 Números: ${nums.join(", ")}
-👤 ${user(msg.from)}`, {
-                    reply_markup: {
-                        inline_keyboard: [
-                            [
-                                { text: "🟢 APROBAR", callback_data: `ok_${nums.join("-")}` },
-                                { text: "🔴 RECHAZAR", callback_data: `no_${nums.join("-")}` }
-                            ]
-                        ]
-                    }
-                });
-            }
-
-        }, 700);
-    });
+👮 Esperando admin`);
 });
 
 // =====================
-// 🟢 / 🔴 APROBACIÓN ADMIN
-bot.on("callback_query", (q) => {
+// 🚀 /BINGO
+bot.onText(/\/bingo/, async (msg) => {
 
-    if (q.from.id !== ADMIN_ID) return;
+    if (msg.from.id !== ADMIN_ID) return;
 
-    let data = q.data;
+    chatId = msg.chat.id;
 
-    if (data.startsWith("ok_")) {
+    db.numeros = {};
+    save();
 
-        let nums = data.split("_")[1].split("-");
+    const sent = await bot.sendMessage(chatId,
+`🎰 NUEVA PARTIDA BINGO`, {
+        reply_markup: board()
+    });
 
-        nums.forEach(n => {
-            if (db.numeros[n]) db.numeros[n].estado = "pagado";
-        });
+    messageId = sent.message_id;
+});
 
-        save();
-        updateBoard();
+// =====================
+// ♻ /RESET
+bot.onText(/\/reset/, (msg) => {
 
-        bot.sendMessage(chatId, "✅ PAGO APROBADO POR ADMIN");
+    if (msg.from.id !== ADMIN_ID) return;
 
+    db = { numeros: {}, total: 0 };
+    save();
+
+    updateBoard();
+
+    bot.sendMessage(msg.chat.id, "♻ SISTEMA REINICIADO");
+});
+
+// =====================
+// 💰 /PAYALL
+bot.onText(/\/payall/, (msg) => {
+
+    if (msg.from.id !== ADMIN_ID) return;
+
+    for (let n in db.numeros) {
+        db.numeros[n].estado = "pagado";
     }
 
-    if (data.startsWith("no_")) {
+    save();
+    updateBoard();
 
-        let nums = data.split("_")[1].split("-");
+    bot.sendMessage(msg.chat.id, "💰 TODOS MARCADOS COMO PAGADOS");
+});
 
-        nums.forEach(n => {
-            delete db.numeros[n];
-        });
+// =====================
+// 🎯 /PAY X
+bot.onText(/\/pay (\d+)/, (msg, match) => {
 
+    if (msg.from.id !== ADMIN_ID) return;
+
+    let num = match[1];
+
+    if (db.numeros[num]) {
+        db.numeros[num].estado = "pagado";
         save();
         updateBoard();
 
-        bot.sendMessage(chatId, "❌ PAGO RECHAZADO");
+        bot.sendMessage(msg.chat.id, `✅ NÚMERO ${num} PAGADO`);
+    } else {
+        bot.sendMessage(msg.chat.id, "❌ NÚMERO NO EXISTE");
     }
 });
