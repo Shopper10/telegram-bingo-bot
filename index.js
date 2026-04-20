@@ -330,3 +330,28 @@ bot.on('message', (msg) => {
         }
     });
 });
+function todosVendidos() {
+    for (let i = 1; i <= 15; i++) {
+        if (!numeros[i] || numeros[i].estado !== "pagado") {
+            return false;
+        }
+    }
+    return true;
+}
+let bingoActivo = false;
+let numerosSorteados = [];
+
+function iniciarBingo() {
+
+    if (bingoActivo) return;
+
+    bingoActivo = true;
+    numerosSorteados = [];
+
+    bot.sendMessage(tableroChatId,
+`🎉 TODOS LOS NÚMEROS VENDIDOS
+
+🎰 INICIA EL BINGO YA`);
+
+    setTimeout(sacarNumero, 3000);
+}
