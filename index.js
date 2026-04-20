@@ -4,17 +4,18 @@ const fs = require("fs");
 const token = process.env.TOKEN;
 const ADMIN_ID = Number(process.env.ADMIN_ID);
 
-// 🔥 evitar doble instancia Railway
-if (global.__RUNNING__) process.exit(0);
-global.__RUNNING__ = true;
+// 🔥 evita doble instancia en Railway
+if (global.__BOT_RUNNING__) process.exit(0);
+global.__BOT_RUNNING__ = true;
 
 const bot = new TelegramBot(token, {
     polling: { autoStart: true, interval: 2000 }
 });
 
-console.log("🎰 CASINO FINAL ONLINE");
+console.log("🎰 CASINO BINGO PRO ONLINE");
 
 // =====================
+// DB
 const DB_FILE = "./data.json";
 
 let db = {
@@ -46,7 +47,7 @@ function user(u) {
 }
 
 // =====================
-// 🎰 TABLERO SOLO USUARIOS (IMPORTANTE)
+// 👤 TABLERO SOLO USUARIOS (SIN ADMIN)
 function boardUser() {
 
     let kb = [];
@@ -67,18 +68,33 @@ function boardUser() {
             let t = 600000 - (Date.now() - n.start);
             let m = Math.max(0, Math.floor(t / 60000));
 
-            kb.push([{
-                text: `⛔ ${i}- ${n.name} ⏱ ${m}m`,
-                callback_data: "ignore"
-            }]);
+            kb.push([{ text: `⛔ ${i}- ${n.name} ⏱ ${m}m`, callback_data: "ignore" }]);
         }
     }
 
-    return kb;
+    return { inline_keyboard: kb };
 }
 
 // =====================
-// 🔄 ACTUALIZAR TABLERO (1 MENSAJE)
+// 🛠 TABLERO ADMIN (SEPARADO TOTAL)
+function boardAdmin() {
+
+    return {
+        inline_keyboard: [
+            [
+                { text: "⚡ PAY ALL", callback_data: "admin_payall" },
+                { text: "🔄 RESET", callback_data: "admin_reset" }
+            ],
+            [
+                { text: "📊 STATUS", callback_data: "admin_status" },
+                { text: "🎰 RULETA", callback_data: "admin_roulette" }
+            ]
+        ]
+    };
+}
+
+// =====================
+// 🔄 ACTUALIZAR TABLERO (SOLO USUARIOS)
 function updateBoard() {
 
     if (!chatId || !messageId) return;
@@ -90,12 +106,12 @@ function updateBoard() {
 🎯 Activo`, {
         chat_id: chatId,
         message_id: messageId,
-        reply_markup: { inline_keyboard: boardUser() }
+        reply_markup: boardUser()
     }).catch(()=>{});
 }
 
 // =====================
-// ⏱ TIMER 10 MIN
+// ⏱ TIMER
 function startTimer(n) {
 
     if (timers[n]) clearTimeout(timers[n]);
@@ -113,47 +129,42 @@ function startTimer(n) {
 }
 
 // =====================
-// 🎰 RULETA VEGAS (CORREGIDA)
+// 🎰 RULETA VEGAS (ANIMADA REAL)
 function ruletaVegas(chatId) {
 
     let nums = Array.from({ length: 15 }, (_, i) => i + 1);
 
-    let text = "🎰 RULETA VEGAS...\n\n";
-
-    bot.sendMessage(chatId, text).then((m) => {
+    bot.sendMessage(chatId, "🎰 RULETA VEGAS...").then((m) => {
 
         let mid = m.message_id;
-
         let steps = 0;
-        let maxSteps = 25;
-        let delay = 80;
 
         let interval = setInterval(() => {
 
             let pick = nums[Math.floor(Math.random() * nums.length)];
 
             bot.editMessageText(
-`🎰 GIRANDO RULETA...\n\n➡️ ${pick}`, {
+`🎰 GIRANDO RULETA...
+
+➡️ ${pick}`, {
                 chat_id: chatId,
                 message_id: mid
             }).catch(()=>{});
 
             steps++;
 
-            if (steps > 10) delay += 40;
-            if (steps > 15) delay += 80;
+        }, 120);
 
-            if (steps >= maxSteps) {
+        setTimeout(() => {
 
-                clearInterval(interval);
+            clearInterval(interval);
 
-                let winner = nums[Math.floor(Math.random() * nums.length)];
-                let name = db.numeros[winner]?.name || "Sin registro";
+            let winner = nums[Math.floor(Math.random() * nums.length)];
+            let name = db.numeros[winner]?.name || "Sin registro";
 
-                showWinner(mid, winner, name);
-            }
+            showWinner(mid, winner, name);
 
-        }, delay);
+        }, 9000);
     });
 }
 
@@ -187,7 +198,7 @@ function showWinner(mid, winner, name) {
 }
 
 // =====================
-// 🔥 CHECK SOLD OUT
+// 🔥 SOLD OUT CHECK
 function checkSoldOut() {
 
     if (bingoStarted) return;
@@ -204,38 +215,27 @@ function checkSoldOut() {
 }
 
 // =====================
-// 🚀 START
+// 🚀 START TABLERO
 bot.onText(/\/bingo/, async (msg) => {
 
     chatId = msg.chat.id;
 
     const sent = await bot.sendMessage(chatId,
-`🎰 CASINO BINGO`, {
-        reply_markup: { inline_keyboard: boardUser() }
+`🎰 CASINO BINGO PRO`, {
+        reply_markup: boardUser()
     });
 
     messageId = sent.message_id;
 });
 
 // =====================
-// 🛠 ADMIN SOLO (OCULTO)
+// 🛠 ADMIN SOLO
 bot.onText(/^\/admin$/, (msg) => {
 
     if (msg.from.id !== ADMIN_ID) return;
 
-    bot.sendMessage(msg.chat.id, "🛠 PANEL ADMIN", {
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: "⚡ PAY ALL", callback_data: "admin_payall" },
-                    { text: "🔄 RESET", callback_data: "admin_reset" }
-                ],
-                [
-                    { text: "📊 STATUS", callback_data: "admin_status" },
-                    { text: "🎰 RULETA", callback_data: "admin_roulette" }
-                ]
-            ]
-        }
+    bot.sendMessage(msg.chat.id, "🛠 PANEL ADMIN CASINO", {
+        reply_markup: boardAdmin()
     });
 });
 
@@ -310,7 +310,7 @@ Nequi 3123902322
 🎰 Activos: ${Object.keys(db.numeros).length}`);
     }
 
-    // RULETA MANUAL
+    // RULETA
     if (d === "admin_roulette") {
 
         ruletaVegas(chatId);
@@ -342,14 +342,6 @@ bot.on("message", (msg) => {
     bot.sendMessage(chatId, "🔍 COMPROBANDO PAGO...");
 
     bot.sendPhoto(chatId, file, {
-        caption: `📥 PAGO\n🎰 ${nums.join(", ")}`,
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: "🟢 APROBAR", callback_data: "ok" },
-                    { text: "🔴 RECHAZAR", callback_data: "no" }
-                ]
-            ]
-        }
+        caption: `📥 PAGO\n🎰 ${nums.join(", ")}`
     });
 });
