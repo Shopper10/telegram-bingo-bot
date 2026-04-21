@@ -4,16 +4,15 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 const ADMIN_ID = Number(process.env.ADMIN_ID);
 
 const TOTAL = 15;
-const TIME = 600; // 10 minutos
+const TIME = 600;
 
 let data = {};
 let board = null;
 let pending = {};
 
-// INIT
 for (let i = 1; i <= TOTAL; i++) {
   data[i] = {
-    state: 'free', // free | reserved | paid
+    state: 'free',
     user: null,
     time: 0
   };
@@ -25,7 +24,7 @@ function formatTime(sec) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-# 🎯 TABLERO BOTONES (LISTA VERTICAL)
+# 🎯 TABLERO (CON EMOJIS)
 function keyboard() {
   let rows = [];
 
@@ -57,7 +56,7 @@ function keyboard() {
 # 🚀 START
 bot.command('start', async (ctx) => {
   const msg = await ctx.reply(
-    '🎱 BINGO RECKER - 15 NÚMEROS',
+    '🎱 BINGO RECKER - 15 NÚMEROS 🎰',
     keyboard()
   );
 
@@ -84,9 +83,9 @@ bot.action(/pick_(\d+)/, async (ctx) => {
   };
 
   ctx.reply(
-`📩 Pago requerido
+`📩 POR FAVOR realizar pago
 
-⏱ Tienes 10 minutos o el número vuelve a estar libre
+⏱ Tienes 10 minutos o vuelve a estar disponible
 
 💳 Nequi: 3123902322`
   );
@@ -105,7 +104,7 @@ bot.on('photo', async (ctx) => {
 
   if (!num) return;
 
-  const msg = await ctx.reply('⏳ Pago recibido, esperando revisión...');
+  const msg = await ctx.reply('⏳ Verificando pago...');
 
   pending[msg.message_id] = {
     chatId: ctx.chat.id,
@@ -114,7 +113,7 @@ bot.on('photo', async (ctx) => {
   };
 
   await ctx.reply(
-    `📩 Pago de @${user}`,
+    `📩 Pago recibido de @${user}`,
     Markup.inlineKeyboard([
       [
         Markup.button.callback('✅ Aprobar', `ok_${msg.message_id}`),
@@ -137,7 +136,6 @@ bot.action(/ok_(\d+)/, async (ctx) => {
 
   let m = await ctx.reply('💚 Procesando pago...');
 
-  // barra animada
   for (let i = 0; i <= 10; i++) {
     const bar = '🟩'.repeat(i) + '⬜️'.repeat(10 - i);
 
@@ -176,7 +174,7 @@ bot.action(/no_(\d+)/, async (ctx) => {
   await update();
 });
 
-# 🔄 UPDATE TABLERO
+# 🔄 UPDATE
 async function update() {
   if (!board) return;
 
@@ -190,7 +188,7 @@ async function update() {
   } catch {}
 }
 
-# ⏱ TIMER GLOBAL (ESTO ARREGLA TODO)
+# ⏱ TIMER GLOBAL
 setInterval(async () => {
   let changed = false;
 
@@ -219,12 +217,10 @@ setInterval(async () => {
     }
   }
 
-  if (changed) {
-    await update();
-  }
+  if (changed) await update();
 
 }, 1000);
 
 bot.launch();
 
-console.log('🎱 BINGO BOT ONLINE');
+console.log('🎱 BINGO BOT ONLINE 🚀');
