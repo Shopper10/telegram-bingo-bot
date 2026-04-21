@@ -1,5 +1,4 @@
 const { Telegraf, Markup } = require('telegraf');
-const db = require('./db');
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
 const ADMIN_ID = Number(process.env.ADMIN_ID);
@@ -7,58 +6,60 @@ const ADMIN_ID = Number(process.env.ADMIN_ID);
 const TOTAL = 15;
 const TIME = 600;
 
+let data = {};
 let board = null;
 
-# 🔥 INIT NUMBERS
-function init() {
-  for (let i = 1; i <= TOTAL; i++) {
-    db.run(
-      `INSERT OR IGNORE INTO numbers (num, state) VALUES (?, 'free')`,
-      [i]
-    );
-  }
+/* INIT NUMBERS */
+for (let i = 1; i <= TOTAL; i++) {
+  data[i] = {
+    state: 'free', // free | reserved | paid
+    user: null,
+    time: 0
+  };
 }
 
+/* FORMAT TIME */
 function formatTime(sec) {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-# 🎯 TABLERO
-function getBoard() {
-  return new Promise((resolve) => {
-    db.all(`SELECT * FROM numbers ORDER BY num ASC`, [], (err, rows) => {
+/* 🎯 TABLERO */
+function keyboard() {
+  let rows = [];
 
-      let kb = rows.map(n => {
-        let text = '';
+  for (let i = 1; i <= TOTAL; i++) {
+    let n = data[i];
 
-        if (n.state === 'free') {
-          text = `🟢 ${n.num} DISPONIBLE`;
-        }
+    let text = '';
 
-        if (n.state === 'reserved') {
-          let remaining = Math.max(0, Math.floor((n.expiresAt - Date.now()) / 1000));
-          text = `⛔ ${n.num} @${n.user} ⏱ ${formatTime(remaining)}`;
-        }
+    if (n.state === 'free') {
+      text = `🟢 ${i} - DISPONIBLE`;
+    }
 
-        if (n.state === 'paid') {
-          text = `✅ ${n.num} @${n.user} PAGADO`;
-        }
+    if (n.state === 'reserved') {
+      text = `⛔ ${i} - @${n.user} ⏱ ${formatTime(n.time)}`;
+    }
 
-        return [Markup.button.callback(text, `pick_${n.num}`)];
-      });
+    if (n.state === 'paid') {
+      text = `✅ ${i} - @${n.user} PAGADO`;
+    }
 
-      resolve(Markup.inlineKeyboard(kb));
-    });
-  });
+    rows.push([
+      Markup.button.callback(text, `pick_${i}`)
+    ]);
+  }
+
+  return Markup.inlineKeyboard(rows);
 }
 
-# 🚀 START
+/* 🚀 START */
 bot.command('start', async (ctx) => {
-  init();
-
-  const msg = await ctx.reply('🎱 BINGO RAILWAY PRO', await getBoard());
+  const msg = await ctx.reply(
+    '🎱 BINGO RECKER 15 NÚMEROS 🎰',
+    keyboard()
+  );
 
   board = {
     chatId: ctx.chat.id,
@@ -66,80 +67,145 @@ bot.command('start', async (ctx) => {
   };
 });
 
-# 🎯 TOMAR NÚMERO
+/* 🎯 TOMAR NÚMERO */
 bot.action(/pick_(\d+)/, async (ctx) => {
-  const num = Number(ctx.match[1]);
+  const num = ctx.match[1];
 
-  db.get(`SELECT * FROM numbers WHERE num=?`, [num], (err, row) => {
+  if (data[num].state !== 'free') {
+    return ctx.answerCbQuery('❌ No disponible');
+  }
 
-    if (row.state !== 'free') {
-      return ctx.answerCbQuery('❌ ocupado');
-    }
+  const user = ctx.from.username || ctx.from.first_name;
 
-    db.run(
-      `UPDATE numbers SET state='reserved', user=?, expiresAt=? WHERE num=?`,
-      [
-        ctx.from.username || ctx.from.first_name,
-        Date.now() + TIME * 1000,
-        num
-      ]
-    );
+  data[num] = {
+    state: 'reserved',
+    user,
+    time: TIME
+  };
 
-    ctx.reply(
+  ctx.reply(
 `📩 Pago requerido
 
-⏱ 10 minutos para pagar
+⏱ Tienes 10 minutos o vuelve a disponible
 
 💳 Nequi: 3123902322`
-    );
+  );
 
-    updateBoard();
-    ctx.answerCbQuery('✔ tomado');
-  });
+  await updateBoard();
+  ctx.answerCbQuery('✔ tomado');
 });
 
-# 🔥 TIMER GLOBAL (SIN BUGS)
-setInterval(() => {
+/* 📸 FOTO COMPROBANTE */
+bot.on('photo', async (ctx) => {
+  const user = ctx.from.username || ctx.from.first_name;
 
-  db.all(`SELECT * FROM numbers WHERE state='reserved'`, [], (err, rows) => {
+  let num = Object.keys(data).find(
+    i => data[i].user === user && data[i].state === 'reserved'
+  );
 
-    rows.forEach(n => {
-      if (n.expiresAt < Date.now()) {
+  if (!num) return;
 
-        db.run(
-          `UPDATE numbers SET state='free', user=NULL, expiresAt=NULL WHERE num=?`,
-          [n.num]
-        );
+  await ctx.reply(
+    `📩 Pago recibido de @${user}`,
+    Markup.inlineKeyboard([
+      [
+        Markup.button.callback('✅ Aprobar', `ok_${num}`),
+        Markup.button.callback('❌ Rechazar', `no_${num}`)
+      ]
+    ])
+  );
+});
 
-        bot.telegram.sendMessage(
-          board.chatId,
-          `⏰ @${n.user} no pagó. Número ${n.num} liberado`
-        );
-      }
-    });
+/* 👑 APROBAR */
+bot.action(/ok_(\d+)/, async (ctx) => {
+  if (ctx.from.id !== ADMIN_ID) return;
 
-    if (rows.length > 0) updateBoard();
+  const num = ctx.match[1];
 
-  });
+  data[num].state = 'paid';
 
-}, 5000);
+  let msg = await ctx.reply('💚 Procesando pago...');
 
-# 🔄 UPDATE TABLERO
+  for (let i = 0; i <= 10; i++) {
+    const bar = '🟩'.repeat(i) + '⬜️'.repeat(10 - i);
+
+    await ctx.telegram.editMessageText(
+      msg.chat.id,
+      msg.message_id,
+      null,
+      `💚 Aprobando pago...\n${bar}`
+    );
+
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  await updateBoard();
+});
+
+/* ❌ RECHAZAR */
+bot.action(/no_(\d+)/, async (ctx) => {
+  if (ctx.from.id !== ADMIN_ID) return;
+
+  const num = ctx.match[1];
+
+  data[num] = {
+    state: 'free',
+    user: null,
+    time: 0
+  };
+
+  await updateBoard();
+});
+
+/* 🔄 UPDATE TABLERO */
 async function updateBoard() {
   if (!board) return;
-
-  const keyboard = await getBoard();
 
   try {
     await bot.telegram.editMessageReplyMarkup(
       board.chatId,
       board.messageId,
       null,
-      keyboard.reply_markup
+      keyboard().reply_markup
     );
   } catch {}
 }
 
+/* ⏱ TIMER GLOBAL (CRONÓMETRO REAL) */
+setInterval(async () => {
+  let changed = false;
+
+  for (let i = 1; i <= TOTAL; i++) {
+    let n = data[i];
+
+    if (n.state === 'reserved') {
+      n.time--;
+
+      if (n.time <= 0) {
+        let user = n.user;
+
+        data[i] = {
+          state: 'free',
+          user: null,
+          time: 0
+        };
+
+        bot.telegram.sendMessage(
+          board.chatId,
+          `⏰ @${user} no pagó. Número ${i} liberado`
+        );
+
+        changed = true;
+      }
+    }
+  }
+
+  if (changed) {
+    await updateBoard();
+  }
+
+}, 1000);
+
 bot.launch();
 
-console.log('🎱 RAILWAY BINGO ONLINE');
+console.log('🎱 BINGO RAILWAY ONLINE');
