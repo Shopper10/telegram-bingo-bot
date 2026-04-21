@@ -1,5 +1,4 @@
 const { Telegraf, Markup } = require('telegraf');
-
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
 const ADMIN_ID = Number(process.env.ADMIN_ID);
@@ -8,123 +7,122 @@ const TOTAL = 15;
 const TIME = 10 * 60;
 
 let data = {};
-let timers = {};
 let boardMsg = null;
 
-// INIT
+// 🔥 INIT
 for (let i = 1; i <= TOTAL; i++) {
   data[i] = {
     state: 'free', // free | reserved | paid
     userId: null,
     user: null,
-    time: 0
+    time: 0,
+    lock: false
   };
 }
 
-// 🔥 CONTAR NUMEROS POR USUARIO
-function contar(userId) {
-  return Object.values(data).filter(n =>
-    n.userId === userId && n.state === 'reserved'
-  ).length;
-}
+// 🎰 TABLERO CASINO PRO (BOTONES BLOQUEADOS)
+function boardUI() {
+  let rows = [];
 
-// 🟩 BARRA VERDE
-function barra(step) {
-  const total = 10;
-  return '🟩'.repeat(step) + '⬜️'.repeat(total - step) + ` ${step * 10}%`;
-}
+  for (let i = 1; i <= TOTAL; i += 3) {
+    let row = [];
 
-// 📊 TABLERO
-function render() {
-  let txt = `🎱 *BINGO 15 NÚMEROS*\n\n`;
+    for (let j = i; j < i + 3 && j <= TOTAL; j++) {
+      let n = data[j];
 
-  for (let i = 1; i <= TOTAL; i++) {
-    let n = data[i];
+      let label = '';
 
-    if (n.state === 'free') {
-      txt += `🟢 ${i} - Disponible\n`;
+      if (n.state === 'free') {
+        label = `🟢 ${j}`;
+      }
+
+      if (n.state === 'reserved') {
+        let m = Math.floor(n.time / 60);
+        let s = n.time % 60;
+        label = `⛔️ ${j} ${n.user} ${m}:${s.toString().padStart(2,'0')}`;
+      }
+
+      if (n.state === 'paid') {
+        label = `✅ ${j} ${n.user}`;
+      }
+
+      row.push(
+        Markup.button.callback(
+          label,
+          `pick_${j}`,
+          n.state !== 'free' // 🔒 bloqueado si no está libre
+        )
+      );
     }
 
-    if (n.state === 'reserved') {
-      let m = Math.floor(n.time / 60);
-      let s = n.time % 60;
-      txt += `⛔️ ${n.user} ${m}:${s.toString().padStart(2,'0')}\n`;
-    }
-
-    if (n.state === 'paid') {
-      txt += `✅ ${n.user} PAGADO\n`;
-    }
+    rows.push(row);
   }
 
-  return txt;
-}
-
-// 🔄 ACTUALIZAR TABLERO
-async function update(ctx) {
-  if (!boardMsg) return;
-
-  try {
-    await ctx.telegram.editMessageText(
-      ctx.chat.id,
-      boardMsg,
-      null,
-      render(),
-      { parse_mode: 'Markdown' }
-    );
-  } catch {}
+  return Markup.inlineKeyboard(rows);
 }
 
 // 🚀 START
 bot.command('start', async (ctx) => {
-  const msg = await ctx.reply(render());
+  const msg = await ctx.reply(
+    '🎰 CASINO BINGO PRO',
+    boardUI()
+  );
+
   boardMsg = msg.message_id;
 });
 
-// 🎯 TOMAR NUMERO (MAX 5)
+// 🎯 TOMAR NÚMERO
 bot.action(/pick_(\d+)/, async (ctx) => {
   const num = ctx.match[1];
   const userId = ctx.from.id;
 
-  if (contar(userId) >= 5) {
+  if (data[num].state !== 'free') {
+    return ctx.answerCbQuery('❌ No disponible');
+  }
+
+  if (data[num].lock) {
+    return ctx.answerCbQuery('⏳ Procesando...');
+  }
+
+  data[num].lock = true;
+
+  // 🔥 LIMITE 5 NUMEROS POR USUARIO
+  const count = Object.values(data).filter(
+    n => n.userId === userId && n.state === 'reserved'
+  ).length;
+
+  if (count >= 5) {
+    data[num].lock = false;
     return ctx.answerCbQuery('❌ Máximo 5 números');
   }
 
-  if (data[num].state !== 'free') {
-    return ctx.answerCbQuery('No disponible');
-  }
-
-  let user = ctx.from.username
-    ? `@${ctx.from.username}`
-    : ctx.from.first_name;
+  let user = '@' + (ctx.from.username || ctx.from.first_name);
 
   data[num] = {
     state: 'reserved',
     userId,
     user,
-    time: TIME
+    time: TIME,
+    lock: false
   };
 
-  ctx.reply(`📩 ${user}, envía comprobante a Nequi`);
+  ctx.reply(`📩 ${user}, envía comprobante de pago a Nequi`);
 
   startTimer(ctx, num);
-  update(ctx);
+  await updateBoard(ctx);
 
-  ctx.answerCbQuery('Reservado');
+  ctx.answerCbQuery('✔ Reservado');
 });
 
-// ⏳ TIMER
+// ⏱ TIMER CASINO
 function startTimer(ctx, num) {
-  timers[num] = setInterval(async () => {
+  setInterval(async () => {
 
-    if (data[num].state !== 'reserved') {
-      clearInterval(timers[num]);
-      return;
-    }
+    if (data[num].state !== 'reserved') return;
 
     data[num].time--;
 
     if (data[num].time <= 0) {
-      clearInterval(timers[num]);
 
       let user = data[num].user;
 
@@ -132,16 +130,17 @@ function startTimer(ctx, num) {
         state: 'free',
         userId: null,
         user: null,
-        time: 0
+        time: 0,
+        lock: false
       };
 
       ctx.telegram.sendMessage(
         ctx.chat.id,
-        `⏰ ${user} no pagó. Número ${num} libre otra vez`
+        `⏰ ${user} no pagó. Número ${num} liberado`
       );
     }
 
-    update(ctx);
+    await updateBoard(ctx);
 
   }, 1000);
 }
@@ -163,11 +162,16 @@ bot.on('photo', async (ctx) => {
   let anim = setInterval(async () => {
     step++;
 
+    let bar =
+      '🟩'.repeat(step) +
+      '⬜️'.repeat(10 - step) +
+      ` ${step * 10}%`;
+
     await ctx.telegram.editMessageText(
       ctx.chat.id,
       msg.message_id,
       null,
-      `⏳ Verificando pago...\n\n${barra(step)}`
+      `⏳ Verificando pago...\n\n${bar}`
     );
 
     if (step >= 10) clearInterval(anim);
@@ -199,11 +203,10 @@ bot.action(/ok_(\d+)/, async (ctx) => {
   const num = ctx.match[1];
 
   data[num].state = 'paid';
-  clearInterval(timers[num]);
 
   ctx.reply(`✅ Número ${num} PAGADO`);
 
-  update(ctx);
+  await updateBoard(ctx);
 });
 
 // ❌ RECHAZAR
@@ -216,16 +219,29 @@ bot.action(/no_(\d+)/, async (ctx) => {
     state: 'free',
     userId: null,
     user: null,
-    time: 0
+    time: 0,
+    lock: false
   };
-
-  clearInterval(timers[num]);
 
   ctx.reply(`❌ Rechazado, número ${num} liberado`);
 
-  update(ctx);
+  await updateBoard(ctx);
 });
+
+// 🔄 UPDATE TABLERO
+async function updateBoard(ctx) {
+  if (!boardMsg) return;
+
+  try {
+    await ctx.telegram.editMessageReplyMarkup(
+      ctx.chat.id,
+      boardMsg,
+      null,
+      boardUI().reply_markup
+    );
+  } catch {}
+}
 
 bot.launch();
 
-console.log("🎱 Bingo bot activo...");
+console.log("🎰 Casino Bingo PRO activo...");
