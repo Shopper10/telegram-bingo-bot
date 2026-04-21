@@ -12,18 +12,31 @@ for (let i = 1; i <= TOTAL; i++) {
   data[i] = { state: 'free', user: null, time: 0 };
 }
 
+function formatTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 function keyboard() {
   let rows = [];
 
   for (let i = 1; i <= TOTAL; i++) {
     let n = data[i];
 
-    let text =
-      n.state === 'free'
-        ? `1 ${i} DISPONIBLE`
-        : n.state === 'reserved'
-        ? `0 ${i} ${n.user}`
-        : `2 ${i} ${n.user}`;
+    let text = '';
+
+    if (n.state === 'free') {
+      text = `🟢 ${i} - DISPONIBLE`;
+    }
+
+    if (n.state === 'reserved') {
+      text = `⛔ ${i} - @${n.user} ⏱ ${formatTime(n.time)}`;
+    }
+
+    if (n.state === 'paid') {
+      text = `✅ ${i} - @${n.user} PAGADO`;
+    }
 
     rows.push([
       Markup.button.callback(text, `pick_${i}`)
@@ -34,7 +47,10 @@ function keyboard() {
 }
 
 bot.command('start', async (ctx) => {
-  const msg = await ctx.reply('BINGO BOT', keyboard());
+  const msg = await ctx.reply(
+    '🎱 BINGO RECKER - 15 NÚMEROS 🎰',
+    keyboard()
+  );
 
   board = {
     chatId: ctx.chat.id,
@@ -46,7 +62,7 @@ bot.action(/pick_(\d+)/, async (ctx) => {
   const num = ctx.match[1];
 
   if (data[num].state !== 'free') {
-    return ctx.answerCbQuery('ocupado');
+    return ctx.answerCbQuery('❌ No disponible');
   }
 
   data[num] = {
@@ -55,8 +71,16 @@ bot.action(/pick_(\d+)/, async (ctx) => {
     time: TIME
   };
 
+  ctx.reply(
+`📩 Pago requerido
+
+⏱ Tienes 10 minutos o vuelve a libre
+
+💳 Nequi: 3123902322`
+  );
+
   await update();
-  ctx.answerCbQuery('ok');
+  ctx.answerCbQuery('✔ tomado');
 });
 
 async function update() {
@@ -74,4 +98,4 @@ async function update() {
 
 bot.launch();
 
-console.log("OK BOT RUNNING");
+console.log("🎱 BINGO BOT ONLINE 🚀");
