@@ -9,16 +9,16 @@ const TIME = 600;
 let data = {};
 let board = null;
 
-/* INIT NUMBERS */
+/* 🚀 INIT NUMBERS */
 for (let i = 1; i <= TOTAL; i++) {
   data[i] = {
-    state: 'free', // free | reserved | paid
+    state: 'free',
     user: null,
     time: 0
   };
 }
 
-/* FORMAT TIME */
+/* ⏱ FORMAT TIME */
 function formatTime(sec) {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
@@ -84,9 +84,9 @@ bot.action(/pick_(\d+)/, async (ctx) => {
   };
 
   ctx.reply(
-`📩 Pago requerido
+`📩 REALIZAR PAGO
 
-⏱ Tienes 10 minutos o vuelve a disponible
+⏱ 10 minutos o se libera
 
 💳 Nequi: 3123902322`
   );
@@ -105,8 +105,10 @@ bot.on('photo', async (ctx) => {
 
   if (!num) return;
 
-  await ctx.reply(
-    `📩 Pago recibido de @${user}`,
+  const msg = await ctx.reply('⏳ Verificando pago...');
+
+  ctx.reply(
+    `📩 Pago de @${user}`,
     Markup.inlineKeyboard([
       [
         Markup.button.callback('✅ Aprobar', `ok_${num}`),
@@ -126,6 +128,7 @@ bot.action(/ok_(\d+)/, async (ctx) => {
 
   let msg = await ctx.reply('💚 Procesando pago...');
 
+  /* 🔥 BARRA ANIMADA */
   for (let i = 0; i <= 10; i++) {
     const bar = '🟩'.repeat(i) + '⬜️'.repeat(10 - i);
 
@@ -139,7 +142,22 @@ bot.action(/ok_(\d+)/, async (ctx) => {
     await new Promise(r => setTimeout(r, 200));
   }
 
-  await updateBoard();
+  /* 💥 MENSAJE FINAL */
+  await ctx.telegram.editMessageText(
+    msg.chat.id,
+    msg.message_id,
+    null,
+    `💚 PAGO APROBADO ✅`
+  );
+
+  /* 🔁 NUEVO TABLERO (MENSAJE NUEVO) */
+  const newMsg = await ctx.telegram.sendMessage(
+    board.chatId,
+    '🎱 TABLERO ACTUALIZADO 👇',
+    keyboard()
+  );
+
+  board.messageId = newMsg.message_id;
 });
 
 /* ❌ RECHAZAR */
@@ -171,8 +189,8 @@ async function updateBoard() {
   } catch {}
 }
 
-/* ⏱ TIMER GLOBAL (CRONÓMETRO REAL) */
-setInterval(async () => {
+/* ⏱ TIMER GLOBAL */
+setInterval(() => {
   let changed = false;
 
   for (let i = 1; i <= TOTAL; i++) {
@@ -182,7 +200,7 @@ setInterval(async () => {
       n.time--;
 
       if (n.time <= 0) {
-        let user = n.user;
+        const user = n.user;
 
         data[i] = {
           state: 'free',
@@ -200,12 +218,10 @@ setInterval(async () => {
     }
   }
 
-  if (changed) {
-    await updateBoard();
-  }
+  if (changed) updateBoard();
 
 }, 1000);
 
 bot.launch();
 
-console.log('🎱 BINGO RAILWAY ONLINE');
+console.log('🎱 BINGO RAILWAY PRO ONLINE');
