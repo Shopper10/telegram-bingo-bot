@@ -7,7 +7,10 @@ const TOTAL = 15;
 const TIME = 10 * 60;
 
 let data = {};
-let boardMessageId = null;
+let board = {
+  chatId: null,
+  messageId: null
+};
 
 // INIT
 for (let i = 1; i <= TOTAL; i++) {
@@ -19,8 +22,8 @@ for (let i = 1; i <= TOTAL; i++) {
   };
 }
 
-# 🎯 BOTONES REALES
-function buildBoard() {
+# 🎯 BOTONES
+function keyboard() {
   let rows = [];
 
   for (let i = 1; i <= TOTAL; i += 3) {
@@ -33,12 +36,16 @@ function buildBoard() {
 
       if (n.state === 'free') {
         label = `🟢 ${j}`;
-      } else if (n.state === 'reserved') {
+      }
+
+      if (n.state === 'reserved') {
         let m = Math.floor(n.time / 60);
         let s = n.time % 60;
-        label = `⛔ ${j} ${n.user} ${m}:${s.toString().padStart(2,'0')}`;
-      } else {
-        label = `✅ ${j} ${n.user}`;
+        label = `⛔ ${j} ${m}:${s.toString().padStart(2,'0')}`;
+      }
+
+      if (n.state === 'paid') {
+        label = `✅ ${j}`;
       }
 
       row.push(
@@ -52,17 +59,18 @@ function buildBoard() {
   return Markup.inlineKeyboard(rows);
 }
 
-# 🚀 START (AQUÍ ESTÁ EL FIX CLAVE)
+# 🚀 START (ESTO ES LO QUE TE FALTABA)
 bot.command('start', async (ctx) => {
   const msg = await ctx.reply(
     '🎰 CASINO BINGO PRO',
-    buildBoard()
+    keyboard()
   );
 
-  boardMessageId = msg.message_id;
+  board.chatId = ctx.chat.id;
+  board.messageId = msg.message_id;
 });
 
-# 🎯 CLICK BOTÓN
+# 🎯 CLICK NÚMERO
 bot.action(/pick_(\d+)/, async (ctx) => {
   const num = ctx.match[1];
   const userId = ctx.from.id;
@@ -80,10 +88,10 @@ bot.action(/pick_(\d+)/, async (ctx) => {
     time: TIME
   };
 
-  ctx.reply(`📩 ${user}, envía comprobante a Nequi`);
+  ctx.reply(`📩 ${user} envía comprobante a Nequi`);
 
   startTimer(ctx, num);
-  await updateBoard(ctx);
+  await updateBoard();
 
   ctx.answerCbQuery('✔ OK');
 });
@@ -107,33 +115,33 @@ function startTimer(ctx, num) {
         time: 0
       };
 
-      ctx.telegram.sendMessage(
-        ctx.chat.id,
+      bot.telegram.sendMessage(
+        board.chatId,
         `⏰ ${user} no pagó. Número ${num} liberado`
       );
-    }
 
-    await updateBoard(ctx);
+      await updateBoard();
+    }
 
   }, 1000);
 }
 
-# 🔄 UPDATE BOTONES (ESTO ES LO MÁS IMPORTANTE)
-async function updateBoard(ctx) {
-  if (!boardMessageId) return;
+# 🔄 UPDATE BOTONES (CLAVE TOTAL)
+async function updateBoard() {
+  if (!board.chatId || !board.messageId) return;
 
   try {
-    await ctx.telegram.editMessageReplyMarkup(
-      ctx.chat.id,
-      boardMessageId,
+    await bot.telegram.editMessageReplyMarkup(
+      board.chatId,
+      board.messageId,
       null,
-      buildBoard().reply_markup
+      keyboard().reply_markup
     );
   } catch (e) {
-    console.log(e.message);
+    console.log("update error:", e.message);
   }
 }
 
 bot.launch();
 
-console.log("🎰 CASINO BOT ACTIVO");
+console.log("🎰 BOT CASINO ACTIVO");
