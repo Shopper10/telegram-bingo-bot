@@ -1,21 +1,29 @@
 const { Telegraf, Markup } = require('telegraf');
+const mongoose = require('mongoose');
+const NumberModel = require('./model/Number');
+
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
 const ADMIN_ID = Number(process.env.ADMIN_ID);
-
 const TOTAL = 15;
 const TIME = 600;
 
-let data = {};
 let board = null;
-let pending = {};
 
-for (let i = 1; i <= TOTAL; i++) {
-  data[i] = {
-    state: 'free',
-    user: null,
-    time: 0
-  };
+/* 🔌 MONGO */
+mongoose.connect(process.env.MONGO_URL)
+  .then(() => console.log('MongoDB OK'))
+  .catch(err => console.log(err));
+
+/* 🚀 INIT NUMBERS */
+async function initNumbers() {
+  for (let i = 1; i <= TOTAL; i++) {
+    await NumberModel.updateOne(
+      { num: i },
+      { num: i },
+      { upsert: true }
+    );
+  }
 }
 
 function formatTime(sec) {
@@ -24,40 +32,39 @@ function formatTime(sec) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-# 🎯 TABLERO (CON EMOJIS)
-function keyboard() {
-  let rows = [];
+/* 🎯 TABLERO */
+async function keyboard() {
+  const nums = await NumberModel.find().sort({ num: 1 });
 
-  for (let i = 1; i <= TOTAL; i++) {
-    let n = data[i];
+  return Markup.inlineKeyboard(
+    nums.map(n => {
+      let text = '';
 
-    let text = '';
+      if (n.state === 'free') {
+        text = `🟢 ${n.num} DISPONIBLE`;
+      }
 
-    if (n.state === 'free') {
-      text = `🟢 ${i} - DISPONIBLE`;
-    }
+      if (n.state === 'reserved') {
+        const remaining = Math.max(0, Math.floor((n.expiresAt - Date.now()) / 1000));
+        text = `⛔ ${n.num} @${n.user} ⏱ ${formatTime(remaining)}`;
+      }
 
-    if (n.state === 'reserved') {
-      text = `⛔ ${i} - @${n.user} ⏱ ${formatTime(n.time)}`;
-    }
+      if (n.state === 'paid') {
+        text = `✅ ${n.num} @${n.user} PAGADO`;
+      }
 
-    if (n.state === 'paid') {
-      text = `✅ ${i} - @${n.user} PAGADO`;
-    }
-
-    rows.push([
-      Markup.button.callback(text, `pick_${i}`)
-    ]);
-  }
-
-  return Markup.inlineKeyboard(rows);
+      return [Markup.button.callback(text, `pick_${n.num}`)];
+    })
+  );
 }
 
-# 🚀 START
+/* 🚀 START */
 bot.command('start', async (ctx) => {
+  await initNumbers();
+
   const msg = await ctx.reply(
-    '🎱 BINGO RECKER - 15 NÚMEROS 🎰',
-    keyboard()
+    '🎱 BINGO PRO PRODUCCIÓN',
+    await keyboard()
   );
 
   board = {
@@ -66,73 +73,71 @@ bot.command('start', async (ctx) => {
   };
 });
 
-# 🎯 TOMAR NÚMERO
+/* 🎯 TOMAR NÚMERO */
 bot.action(/pick_(\d+)/, async (ctx) => {
-  const num = ctx.match[1];
+  const num = Number(ctx.match[1]);
 
-  if (data[num].state !== 'free') {
+  const n = await NumberModel.findOne({ num });
+
+  if (n.state !== 'free') {
     return ctx.answerCbQuery('❌ No disponible');
   }
 
-  const user = ctx.from.username || ctx.from.first_name;
-
-  data[num] = {
-    state: 'reserved',
-    user,
-    time: TIME
-  };
+  await NumberModel.updateOne(
+    { num },
+    {
+      state: 'reserved',
+      user: ctx.from.username || ctx.from.first_name,
+      expiresAt: Date.now() + TIME * 1000
+    }
+  );
 
   ctx.reply(
-`📩 POR FAVOR realizar pago
+`📩 POR FAVOR REALIZAR PAGO
 
-⏱ Tienes 10 minutos o vuelve a estar disponible
+⏱ 10 minutos o el número vuelve a estar libre
 
 💳 Nequi: 3123902322`
   );
 
-  await update();
+  await updateBoard();
   ctx.answerCbQuery('✔ tomado');
 });
 
-# 📸 FOTO COMPROBANTE
+/* 📸 FOTO COMPROBANTE */
 bot.on('photo', async (ctx) => {
   const user = ctx.from.username || ctx.from.first_name;
 
-  let num = Object.keys(data).find(
-    i => data[i].user === user && data[i].state === 'reserved'
-  );
+  const n = await NumberModel.findOne({
+    user,
+    state: 'reserved'
+  });
 
-  if (!num) return;
+  if (!n) return;
 
   const msg = await ctx.reply('⏳ Verificando pago...');
 
-  pending[msg.message_id] = {
-    chatId: ctx.chat.id,
-    num,
-    user
-  };
-
-  await ctx.reply(
-    `📩 Pago recibido de @${user}`,
-    Markup.inlineKeyboard([
-      [
-        Markup.button.callback('✅ Aprobar', `ok_${msg.message_id}`),
-        Markup.button.callback('❌ Rechazar', `no_${msg.message_id}`)
-      ]
-    ])
+  ctx.reply(
+`📩 Pago recibido de @${user}`,
+Markup.inlineKeyboard([
+  [
+    Markup.button.callback('✅ Aprobar', `ok_${n.num}`),
+    Markup.button.callback('❌ Rechazar', `no_${n.num}`)
+  ]
+])
   );
 });
 
-# 👑 APROBAR (ADMIN)
+/* 👑 APROBAR */
 bot.action(/ok_(\d+)/, async (ctx) => {
   if (ctx.from.id !== ADMIN_ID) return;
 
-  const id = ctx.match[1];
-  const p = pending[id];
+  const num = Number(ctx.match[1]);
 
-  if (!p) return;
-
-  data[p.num].state = 'paid';
+  await NumberModel.updateOne(
+    { num },
+    { state: 'paid' }
+  );
 
   let m = await ctx.reply('💚 Procesando pago...');
 
@@ -146,36 +151,32 @@ bot.action(/ok_(\d+)/, async (ctx) => {
       `💚 Aprobando pago...\n${bar}`
     );
 
-    await new Promise(r => setTimeout(r, 250));
+    await new Promise(r => setTimeout(r, 200));
   }
 
-  delete pending[id];
-
-  await update();
+  await updateBoard();
 });
 
-# ❌ RECHAZAR
+/* ❌ RECHAZAR */
 bot.action(/no_(\d+)/, async (ctx) => {
   if (ctx.from.id !== ADMIN_ID) return;
 
-  const id = ctx.match[1];
-  const p = pending[id];
+  const num = Number(ctx.match[1]);
 
-  if (!p) return;
+  await NumberModel.updateOne(
+    { num },
+    {
+      state: 'free',
+      user: null,
+      expiresAt: null
+    }
+  );
 
-  data[p.num] = {
-    state: 'free',
-    user: null,
-    time: 0
-  };
-
-  delete pending[id];
-
-  await update();
+  await updateBoard();
 });
 
-# 🔄 UPDATE
-async function update() {
+/* 🔄 UPDATE TABLERO */
+async function updateBoard() {
   if (!board) return;
 
   try {
@@ -183,44 +184,42 @@ async function update() {
       board.chatId,
       board.messageId,
       null,
-      keyboard().reply_markup
+      (await keyboard()).reply_markup
     );
   } catch {}
 }
 
-# ⏱ TIMER GLOBAL
+/* ⏱ CHECKER GLOBAL */
 setInterval(async () => {
-  let changed = false;
+  const now = Date.now();
 
-  for (let i = 1; i <= TOTAL; i++) {
-    let n = data[i];
+  const expired = await NumberModel.find({
+    state: 'reserved',
+    expiresAt: { $lt: now }
+  });
 
-    if (n.state === 'reserved') {
-      n.time--;
-
-      if (n.time <= 0) {
-        let user = n.user;
-
-        data[i] = {
-          state: 'free',
-          user: null,
-          time: 0
-        };
-
-        bot.telegram.sendMessage(
-          board.chatId,
-          `⏰ @${user} no pagó. Número ${i} liberado`
-        );
-
-        changed = true;
+  for (let n of expired) {
+    await NumberModel.updateOne(
+      { num: n.num },
+      {
+        state: 'free',
+        user: null,
+        expiresAt: null
       }
-    }
+    );
+
+    bot.telegram.sendMessage(
+      board.chatId,
+      `⏰ @${n.user} no pagó. Número ${n.num} liberado`
+    );
   }
 
-  if (changed) await update();
+  if (expired.length > 0) {
+    await updateBoard();
+  }
 
-}, 1000);
+}, 5000);
 
 bot.launch();
 
-console.log('🎱 BINGO BOT ONLINE 🚀');
+console.log('🎱 BINGO PRO PRODUCCIÓN ONLINE');
