@@ -18,7 +18,7 @@ for (let i = 1; i <= TOTAL; i++) {
   };
 }
 
-/* ⏱ FORMAT TIME */
+/* ⏱ FORMAT */
 function formatTime(sec) {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
@@ -57,7 +57,7 @@ function keyboard() {
 /* 🚀 START */
 bot.command('start', async (ctx) => {
   const msg = await ctx.reply(
-    '🎱 BINGO RECKER PRO 15 NÚMEROS',
+    '🎱 BINGO RECKER 15 NÚMEROS',
     keyboard()
   );
 
@@ -86,7 +86,7 @@ bot.action(/pick_(\d+)/, async (ctx) => {
   ctx.reply(
 `📩 REALIZA EL PAGO
 
-⏱ 10 minutos o vuelve a libre
+⏱ 10 minutos o vuelve a disponible
 
 💳 Nequi: 3123902322`
   );
@@ -95,7 +95,7 @@ bot.action(/pick_(\d+)/, async (ctx) => {
   ctx.answerCbQuery('✔ tomado');
 });
 
-/* 📸 FOTO COMPROBANTE (MULTI NÚMEROS) */
+/* 📸 FOTO COMPROBANTE (MULTI) */
 bot.on('photo', async (ctx) => {
   const user = ctx.from.username || ctx.from.first_name;
 
@@ -110,29 +110,37 @@ bot.on('photo', async (ctx) => {
   if (nums.length === 0) return;
 
   await ctx.reply(
-    `📩 Pago recibido de @${user}\n\nNúmeros: ${nums.join(', ')}`,
-    Markup.inlineKeyboard(
-      nums.map(n => ([
-        Markup.button.callback(`✅ Aprobar ${n}`, `ok_${n}`),
-        Markup.button.callback(`❌ Rechazar ${n}`, `no_${n}`)
-      ])).flat()
-    )
+`📩 Pago recibido de @${user}
+
+🎟 Números: ${nums.join(', ')}
+
+⚠️ Esperando admin`,
+    Markup.inlineKeyboard([
+      [
+        Markup.button.callback(`✅ APROBAR TODO`, `ok_all_${user}`),
+        Markup.button.callback(`❌ RECHAZAR TODO`, `no_all_${user}`)
+      ]
+    ])
   );
 });
 
-/* 👑 APROBAR (SOLO ADMIN) */
-bot.action(/ok_(\d+)/, async (ctx) => {
-  if (ctx.from.id !== ADMIN_ID) {
-    return ctx.answerCbQuery('⛔ Solo admin puede aprobar');
+/* 👑 APROBAR TODO */
+bot.action(/ok_all_(.+)/, async (ctx) => {
+  if (ctx.from.id !== ADMIN_ID) return;
+
+  const user = ctx.match[1];
+
+  let nums = [];
+
+  for (let i = 1; i <= TOTAL; i++) {
+    if (data[i].user === user && data[i].state === 'reserved') {
+      data[i].state = 'paid';
+      nums.push(i);
+    }
   }
 
-  const num = ctx.match[1];
+  let msg = await ctx.reply('💚 Procesando pagos...');
 
-  data[num].state = 'paid';
-
-  let msg = await ctx.reply('💚 Procesando pago...');
-
-  /* 🔥 BARRA ANIMADA */
   for (let i = 0; i <= 10; i++) {
     const bar = '🟩'.repeat(i) + '⬜️'.repeat(10 - i);
 
@@ -140,21 +148,19 @@ bot.action(/ok_(\d+)/, async (ctx) => {
       msg.chat.id,
       msg.message_id,
       null,
-      `💚 Aprobando pago...\n${bar}`
+      `💚 Aprobando pagos...\n${bar}`
     );
 
     await new Promise(r => setTimeout(r, 200));
   }
 
-  /* 💚 FINAL */
   await ctx.telegram.editMessageText(
     msg.chat.id,
     msg.message_id,
     null,
-    `💚 PAGO APROBADO ✅`
+    `💚 PAGOS APROBADOS ✅\n🎟 ${nums.join(', ')}`
   );
 
-  /* 🔁 NUEVO TABLERO */
   const newMsg = await ctx.telegram.sendMessage(
     board.chatId,
     '🎱 TABLERO ACTUALIZADO 👇',
@@ -164,20 +170,26 @@ bot.action(/ok_(\d+)/, async (ctx) => {
   board.messageId = newMsg.message_id;
 });
 
-/* ❌ RECHAZAR (SOLO ADMIN) */
-bot.action(/no_(\d+)/, async (ctx) => {
-  if (ctx.from.id !== ADMIN_ID) {
-    return ctx.answerCbQuery('⛔ Solo admin puede rechazar');
+/* ❌ RECHAZAR TODO */
+bot.action(/no_all_(.+)/, async (ctx) => {
+  if (ctx.from.id !== ADMIN_ID) return;
+
+  const user = ctx.match[1];
+
+  let nums = [];
+
+  for (let i = 1; i <= TOTAL; i++) {
+    if (data[i].user === user && data[i].state === 'reserved') {
+      data[i] = {
+        state: 'free',
+        user: null,
+        time: 0
+      };
+      nums.push(i);
+    }
   }
 
-  const num = ctx.match[1];
-
-  data[num] = {
-    state: 'free',
-    user: null,
-    time: 0
-  };
-
+  await ctx.reply(`❌ Rechazados: ${nums.join(', ')}`);
   await updateBoard();
 });
 
@@ -195,7 +207,7 @@ async function updateBoard() {
   } catch {}
 }
 
-/* ⏱ CRONÓMETRO GLOBAL */
+/* ⏱ TIMER + AVISO DE EXPIRACIÓN */
 setInterval(() => {
   let changed = false;
 
@@ -214,9 +226,10 @@ setInterval(() => {
           time: 0
         };
 
+        /* 💥 AVISO AL GRUPO */
         bot.telegram.sendMessage(
           board.chatId,
-          `⏰ @${user} no pagó. Número ${i} liberado`
+          `⏰ Número ${i} quedó DISPONIBLE nuevamente`
         );
 
         changed = true;
@@ -230,4 +243,4 @@ setInterval(() => {
 
 bot.launch();
 
-console.log('🎱 BINGO RAILWAY PRO FINAL ONLINE');
+console.log('🎱 BINGO RAILWAY FINAL ONLINE');
