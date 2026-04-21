@@ -57,7 +57,7 @@ function keyboard() {
 /* 🚀 START */
 bot.command('start', async (ctx) => {
   const msg = await ctx.reply(
-    '🎱 BINGO RECKER 15 NÚMEROS',
+    '🎱 BINGO RECKER PRO 15 NÚMEROS',
     keyboard()
   );
 
@@ -84,7 +84,7 @@ bot.action(/pick_(\d+)/, async (ctx) => {
   };
 
   ctx.reply(
-`📩 REALIZA EL PAGO
+`📩 PAGO REQUERIDO
 
 ⏱ 10 minutos o vuelve a disponible
 
@@ -95,7 +95,7 @@ bot.action(/pick_(\d+)/, async (ctx) => {
   ctx.answerCbQuery('✔ tomado');
 });
 
-/* 📸 FOTO COMPROBANTE (MULTI) */
+/* 📸 FOTO COMPROBANTE (MULTI NUMEROS) */
 bot.on('photo', async (ctx) => {
   const user = ctx.from.username || ctx.from.first_name;
 
@@ -117,8 +117,8 @@ bot.on('photo', async (ctx) => {
 ⚠️ Esperando admin`,
     Markup.inlineKeyboard([
       [
-        Markup.button.callback(`✅ APROBAR TODO`, `ok_all_${user}`),
-        Markup.button.callback(`❌ RECHAZAR TODO`, `no_all_${user}`)
+        Markup.button.callback('✅ APROBAR TODO', `ok_all_${user}`),
+        Markup.button.callback('❌ RECHAZAR TODO', `no_all_${user}`)
       ]
     ])
   );
@@ -126,7 +126,9 @@ bot.on('photo', async (ctx) => {
 
 /* 👑 APROBAR TODO */
 bot.action(/ok_all_(.+)/, async (ctx) => {
-  if (ctx.from.id !== ADMIN_ID) return;
+  if (ctx.from.id !== ADMIN_ID) {
+    return ctx.answerCbQuery('⛔ Solo admin');
+  }
 
   const user = ctx.match[1];
 
@@ -172,7 +174,9 @@ bot.action(/ok_all_(.+)/, async (ctx) => {
 
 /* ❌ RECHAZAR TODO */
 bot.action(/no_all_(.+)/, async (ctx) => {
-  if (ctx.from.id !== ADMIN_ID) return;
+  if (ctx.from.id !== ADMIN_ID) {
+    return ctx.answerCbQuery('⛔ Solo admin');
+  }
 
   const user = ctx.match[1];
 
@@ -207,7 +211,7 @@ async function updateBoard() {
   } catch {}
 }
 
-/* ⏱ TIMER + AVISO DE EXPIRACIÓN */
+/* ⏱ TIMER + AVISO EXPIRACIÓN */
 setInterval(() => {
   let changed = false;
 
@@ -226,7 +230,6 @@ setInterval(() => {
           time: 0
         };
 
-        /* 💥 AVISO AL GRUPO */
         bot.telegram.sendMessage(
           board.chatId,
           `⏰ Número ${i} quedó DISPONIBLE nuevamente`
@@ -241,6 +244,38 @@ setInterval(() => {
 
 }, 1000);
 
+/* 🔁 RESET TOTAL */
+bot.command('reset', async (ctx) => {
+  if (ctx.from.id !== ADMIN_ID) {
+    return ctx.reply('⛔ Solo admin');
+  }
+
+  for (let i = 1; i <= TOTAL; i++) {
+    data[i] = {
+      state: 'free',
+      user: null,
+      time: 0
+    };
+  }
+
+  const msg = await ctx.reply('🔄 Juego reiniciado');
+
+  const newMsg = await ctx.telegram.sendMessage(
+    board.chatId,
+    '🎱 NUEVO JUEGO INICIADO 👇',
+    keyboard()
+  );
+
+  board.messageId = newMsg.message_id;
+});
+
+/* 🔄 REFRESH MANUAL */
+bot.command('refresh', async (ctx) => {
+  if (ctx.from.id !== ADMIN_ID) return;
+  await updateBoard();
+  ctx.reply('🔄 Tablero actualizado');
+});
+
 bot.launch();
 
-console.log('🎱 BINGO RAILWAY FINAL ONLINE');
+console.log('🎱 BINGO FINAL PRODUCCIÓN ONLINE');
