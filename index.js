@@ -9,7 +9,7 @@ const TIME = 600;
 let data = {};
 let board = null;
 
-/* 🚀 INIT NUMBERS */
+/* 🚀 INIT */
 for (let i = 1; i <= TOTAL; i++) {
   data[i] = {
     state: 'free',
@@ -57,7 +57,7 @@ function keyboard() {
 /* 🚀 START */
 bot.command('start', async (ctx) => {
   const msg = await ctx.reply(
-    '🎱 BINGO RECKER 15 NÚMEROS 🎰',
+    '🎱 BINGO RECKER PRO 15 NÚMEROS',
     keyboard()
   );
 
@@ -84,10 +84,9 @@ bot.action(/pick_(\d+)/, async (ctx) => {
   };
 
   ctx.reply(
-`📩 REALIZAR PAGO
-Y ENVIAR CAPTURA AL GRUPO 
+`📩 REALIZA EL PAGO
 
-⏱ 10 minutos o se libera
+⏱ 10 minutos o vuelve a libre
 
 💳 Nequi: 3123902322`
   );
@@ -96,32 +95,36 @@ Y ENVIAR CAPTURA AL GRUPO
   ctx.answerCbQuery('✔ tomado');
 });
 
-/* 📸 FOTO COMPROBANTE */
+/* 📸 FOTO COMPROBANTE (MULTI NÚMEROS) */
 bot.on('photo', async (ctx) => {
   const user = ctx.from.username || ctx.from.first_name;
 
-  let num = Object.keys(data).find(
-    i => data[i].user === user && data[i].state === 'reserved'
-  );
+  let nums = [];
 
-  if (!num) return;
+  for (let i = 1; i <= TOTAL; i++) {
+    if (data[i].user === user && data[i].state === 'reserved') {
+      nums.push(i);
+    }
+  }
 
-  const msg = await ctx.reply('⏳ Verificando pago...');
+  if (nums.length === 0) return;
 
-  ctx.reply(
-    `📩 Pago de @${user}`,
-    Markup.inlineKeyboard([
-      [
-        Markup.button.callback('✅ Aprobar', `ok_${num}`),
-        Markup.button.callback('❌ Rechazar', `no_${num}`)
-      ]
-    ])
+  await ctx.reply(
+    `📩 Pago recibido de @${user}\n\nNúmeros: ${nums.join(', ')}`,
+    Markup.inlineKeyboard(
+      nums.map(n => ([
+        Markup.button.callback(`✅ Aprobar ${n}`, `ok_${n}`),
+        Markup.button.callback(`❌ Rechazar ${n}`, `no_${n}`)
+      ])).flat()
+    )
   );
 });
 
-/* 👑 APROBAR */
+/* 👑 APROBAR (SOLO ADMIN) */
 bot.action(/ok_(\d+)/, async (ctx) => {
-  if (ctx.from.id !== ADMIN_ID) return;
+  if (ctx.from.id !== ADMIN_ID) {
+    return ctx.answerCbQuery('⛔ Solo admin puede aprobar');
+  }
 
   const num = ctx.match[1];
 
@@ -143,7 +146,7 @@ bot.action(/ok_(\d+)/, async (ctx) => {
     await new Promise(r => setTimeout(r, 200));
   }
 
-  /* 💥 MENSAJE FINAL */
+  /* 💚 FINAL */
   await ctx.telegram.editMessageText(
     msg.chat.id,
     msg.message_id,
@@ -151,7 +154,7 @@ bot.action(/ok_(\d+)/, async (ctx) => {
     `💚 PAGO APROBADO ✅`
   );
 
-  /* 🔁 NUEVO TABLERO (MENSAJE NUEVO) */
+  /* 🔁 NUEVO TABLERO */
   const newMsg = await ctx.telegram.sendMessage(
     board.chatId,
     '🎱 TABLERO ACTUALIZADO 👇',
@@ -161,9 +164,11 @@ bot.action(/ok_(\d+)/, async (ctx) => {
   board.messageId = newMsg.message_id;
 });
 
-/* ❌ RECHAZAR */
+/* ❌ RECHAZAR (SOLO ADMIN) */
 bot.action(/no_(\d+)/, async (ctx) => {
-  if (ctx.from.id !== ADMIN_ID) return;
+  if (ctx.from.id !== ADMIN_ID) {
+    return ctx.answerCbQuery('⛔ Solo admin puede rechazar');
+  }
 
   const num = ctx.match[1];
 
@@ -190,7 +195,7 @@ async function updateBoard() {
   } catch {}
 }
 
-/* ⏱ TIMER GLOBAL */
+/* ⏱ CRONÓMETRO GLOBAL */
 setInterval(() => {
   let changed = false;
 
@@ -225,4 +230,4 @@ setInterval(() => {
 
 bot.launch();
 
-console.log('🎱 BINGO RAILWAY PRO ONLINE');
+console.log('🎱 BINGO RAILWAY PRO FINAL ONLINE');
