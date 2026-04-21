@@ -6,16 +6,65 @@ const ADMIN_ID = Number(process.env.ADMIN_ID);
 const TOTAL = 15;
 const TIME = 600;
 
+/* 🧠 DATA */
 let data = {};
 let board = null;
 
 /* 🚀 INIT */
 for (let i = 1; i <= TOTAL; i++) {
-  data[i] = {
-    state: 'free',
-    user: null,
-    time: 0
-  };
+  data[i] = { state: 'free', user: null, time: 0 };
+}
+
+/* =========================
+   🔒 SISTEMA ANTI BAN (QUEUE)
+========================= */
+
+let queue = [];
+let sending = false;
+
+function enqueue(fn) {
+  queue.push(fn);
+  processQueue();
+}
+
+async function processQueue() {
+  if (sending) return;
+  sending = true;
+
+  while (queue.length > 0) {
+    const fn = queue.shift();
+
+    try {
+      await fn();
+    } catch (e) {
+      if (e.response && e.response.error_code === 429) {
+        const wait = (e.response.parameters?.retry_after || 3) * 1000;
+        await new Promise(r => setTimeout(r, wait));
+      }
+    }
+
+    await new Promise(r => setTimeout(r, 300)); // 🔥 velocidad segura
+  }
+
+  sending = false;
+}
+
+/* ========================= */
+
+function safeSendMessage(chatId, text, extra = {}) {
+  enqueue(() => bot.telegram.sendMessage(chatId, text, extra));
+}
+
+function safeEdit(chatId, messageId, markup) {
+  enqueue(() =>
+    bot.telegram.editMessageReplyMarkup(chatId, messageId, null, markup)
+  );
+}
+
+function safeEditText(chatId, messageId, text) {
+  enqueue(() =>
+    bot.telegram.editMessageText(chatId, messageId, null, text)
+  );
 }
 
 /* ⏱ FORMAT */
@@ -31,24 +80,13 @@ function keyboard() {
 
   for (let i = 1; i <= TOTAL; i++) {
     let n = data[i];
-
     let text = '';
 
-    if (n.state === 'free') {
-      text = `🟢 ${i} - DISPONIBLE`;
-    }
+    if (n.state === 'free') text = `🟢 ${i} - DISPONIBLE`;
+    if (n.state === 'reserved') text = `⛔ ${i} - @${n.user} ⏱ ${formatTime(n.time)}`;
+    if (n.state === 'paid') text = `✅ ${i} - @${n.user} PAGADO`;
 
-    if (n.state === 'reserved') {
-      text = `⛔ ${i} - @${n.user} ⏱ ${formatTime(n.time)}`;
-    }
-
-    if (n.state === 'paid') {
-      text = `✅ ${i} - @${n.user} PAGADO`;
-    }
-
-    rows.push([
-      Markup.button.callback(text, `pick_${i}`)
-    ]);
+    rows.push([Markup.button.callback(text, `pick_${i}`)]);
   }
 
   return Markup.inlineKeyboard(rows);
@@ -56,10 +94,7 @@ function keyboard() {
 
 /* 🚀 START */
 bot.command('start', async (ctx) => {
-  const msg = await ctx.reply(
-    '🎱 BINGO RECKER PRO 15 NÚMEROS',
-    keyboard()
-  );
+  const msg = await ctx.reply('🎱 BINGO RECKER PRO', keyboard());
 
   board = {
     chatId: ctx.chat.id,
@@ -67,7 +102,7 @@ bot.command('start', async (ctx) => {
   };
 });
 
-/* 🎯 TOMAR NÚMERO */
+/* 🎯 TOMAR */
 bot.action(/pick_(\d+)/, async (ctx) => {
   const num = ctx.match[1];
 
@@ -77,26 +112,22 @@ bot.action(/pick_(\d+)/, async (ctx) => {
 
   const user = ctx.from.username || ctx.from.first_name;
 
-  data[num] = {
-    state: 'reserved',
-    user,
-    time: TIME
-  };
+  data[num] = { state: 'reserved', user, time: TIME };
 
-  ctx.reply(
+  ctx.answerCbQuery('✔ Número tomado');
+
+  safeSendMessage(
+    board.chatId,
 `📩 PAGO REQUERIDO
-ENVIAR CAPTURE PAGO AL GRUPO
-
-⏱ 10 minutos o vuelve a disponible
+⏱ 10 minutos
 
 💳 Nequi: 3123902322`
   );
 
-  await updateBoard();
-  ctx.answerCbQuery('✔ tomado');
+  updateBoard();
 });
 
-/* 📸 FOTO COMPROBANTE (MULTI NUMEROS) */
+/* 📸 FOTO MULTI */
 bot.on('photo', async (ctx) => {
   const user = ctx.from.username || ctx.from.first_name;
 
@@ -108,14 +139,12 @@ bot.on('photo', async (ctx) => {
     }
   }
 
-  if (nums.length === 0) return;
+  if (!nums.length) return;
 
-  await ctx.reply(
-`📩 Pago recibido de @${user}
-
-🎟 Números: ${nums.join(', ')}
-
-⚠️ Esperando admin`,
+  safeSendMessage(
+    board.chatId,
+`📩 Pago de @${user}
+🎟 ${nums.join(', ')}`,
     Markup.inlineKeyboard([
       [
         Markup.button.callback('✅ APROBAR TODO', `ok_all_${user}`),
@@ -125,14 +154,11 @@ bot.on('photo', async (ctx) => {
   );
 });
 
-/* 👑 APROBAR TODO */
+/* 👑 APROBAR */
 bot.action(/ok_all_(.+)/, async (ctx) => {
-  if (ctx.from.id !== ADMIN_ID) {
-    return ctx.answerCbQuery('⛔ Solo admin');
-  }
+  if (ctx.from.id !== ADMIN_ID) return;
 
   const user = ctx.match[1];
-
   let nums = [];
 
   for (let i = 1; i <= TOTAL; i++) {
@@ -142,79 +168,49 @@ bot.action(/ok_all_(.+)/, async (ctx) => {
     }
   }
 
-  let msg = await ctx.reply('💚 Procesando pagos...');
+  let msg = await ctx.reply('💚 Procesando...');
 
   for (let i = 0; i <= 10; i++) {
     const bar = '🟩'.repeat(i) + '⬜️'.repeat(10 - i);
-
-    await ctx.telegram.editMessageText(
-      msg.chat.id,
-      msg.message_id,
-      null,
-      `💚 Aprobando pagos...\n${bar}`
-    );
-
+    safeEditText(msg.chat.id, msg.message_id, `💚\n${bar}`);
     await new Promise(r => setTimeout(r, 200));
   }
 
-  await ctx.telegram.editMessageText(
-    msg.chat.id,
-    msg.message_id,
-    null,
-    `💚 PAGOS APROBADOS ✅\n🎟 ${nums.join(', ')}`
-  );
+  safeEditText(msg.chat.id, msg.message_id, `💚 PAGADO ✅`);
 
-  const newMsg = await ctx.telegram.sendMessage(
+  const newMsg = await bot.telegram.sendMessage(
     board.chatId,
-    '🎱 TABLERO ACTUALIZADO 👇',
+    '🎱 TABLERO ACTUALIZADO',
     keyboard()
   );
 
   board.messageId = newMsg.message_id;
 });
 
-/* ❌ RECHAZAR TODO */
+/* ❌ RECHAZAR */
 bot.action(/no_all_(.+)/, async (ctx) => {
-  if (ctx.from.id !== ADMIN_ID) {
-    return ctx.answerCbQuery('⛔ Solo admin');
-  }
+  if (ctx.from.id !== ADMIN_ID) return;
 
   const user = ctx.match[1];
 
-  let nums = [];
-
   for (let i = 1; i <= TOTAL; i++) {
-    if (data[i].user === user && data[i].state === 'reserved') {
-      data[i] = {
-        state: 'free',
-        user: null,
-        time: 0
-      };
-      nums.push(i);
+    if (data[i].user === user) {
+      data[i] = { state: 'free', user: null, time: 0 };
     }
   }
 
-  await ctx.reply(`❌ Rechazados: ${nums.join(', ')}`);
-  await updateBoard();
+  updateBoard();
 });
 
-/* 🔄 UPDATE TABLERO */
-async function updateBoard() {
+/* 🔄 UPDATE */
+function updateBoard() {
   if (!board) return;
-
-  try {
-    await bot.telegram.editMessageReplyMarkup(
-      board.chatId,
-      board.messageId,
-      null,
-      keyboard().reply_markup
-    );
-  } catch {}
+  safeEdit(board.chatId, board.messageId, keyboard().reply_markup);
 }
 
-/* ⏱ TIMER + AVISO EXPIRACIÓN */
+/* ⏱ TIMER OPTIMIZADO */
 setInterval(() => {
-  let changed = false;
+  let expired = [];
 
   for (let i = 1; i <= TOTAL; i++) {
     let n = data[i];
@@ -223,60 +219,41 @@ setInterval(() => {
       n.time--;
 
       if (n.time <= 0) {
-        const user = n.user;
-
-        data[i] = {
-          state: 'free',
-          user: null,
-          time: 0
-        };
-
-        bot.telegram.sendMessage(
-          board.chatId,
-          `⏰ Número ${i} quedó DISPONIBLE nuevamente`
-        );
-
-        changed = true;
+        expired.push(i);
+        data[i] = { state: 'free', user: null, time: 0 };
       }
     }
   }
 
-  if (changed) updateBoard();
-
-}, 1000);
-
-/* 🔁 RESET TOTAL */
-bot.command('reset', async (ctx) => {
-  if (ctx.from.id !== ADMIN_ID) {
-    return ctx.reply('⛔ Solo admin');
+  if (expired.length) {
+    safeSendMessage(
+      board.chatId,
+      `⏰ Disponibles: ${expired.join(', ')}`
+    );
+    updateBoard();
   }
+
+}, 4000); // 🔥 clave anti-ban
+
+/* 🔁 RESET */
+bot.command('reset', async (ctx) => {
+  if (ctx.from.id !== ADMIN_ID) return;
 
   for (let i = 1; i <= TOTAL; i++) {
-    data[i] = {
-      state: 'free',
-      user: null,
-      time: 0
-    };
+    data[i] = { state: 'free', user: null, time: 0 };
   }
 
-  const msg = await ctx.reply('🔄 Juego reiniciado');
+  const msg = await ctx.reply('🔄 Reiniciado');
 
-  const newMsg = await ctx.telegram.sendMessage(
+  const newMsg = await bot.telegram.sendMessage(
     board.chatId,
-    '🎱 NUEVO JUEGO INICIADO 👇',
+    '🎱 NUEVO JUEGO',
     keyboard()
   );
 
   board.messageId = newMsg.message_id;
 });
 
-/* 🔄 REFRESH MANUAL */
-bot.command('refresh', async (ctx) => {
-  if (ctx.from.id !== ADMIN_ID) return;
-  await updateBoard();
-  ctx.reply('🔄 Tablero actualizado');
-});
-
 bot.launch();
 
-console.log('🎱 BINGO FINAL PRODUCCIÓN ONLINE');
+console.log('🔥 BINGO ANTI-BAN ACTIVO');
