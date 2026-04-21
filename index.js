@@ -1,175 +1,214 @@
-const TelegramBot = require("node-telegram-bot-api");
-const fs = require("fs");
+const { Telegraf, Markup } = require('telegraf');
 
-const token = process.env.TOKEN;
-const ADMIN_ID = Number(process.env.ADMIN_ID);
+const bot = new Telegraf('TU_TOKEN_AQUI');
 
-const bot = new TelegramBot(token, { polling: true });
+// CONFIG
+const ADMIN_ID = 123456789; // <-- TU ID
+const TOTAL_NUMEROS = 15;
+const TIEMPO_RESERVA = 10 * 60; // 10 min en segundos
 
-let db = { numeros: {} };
-let chatId = null;
-let boardId = null;
+// ESTADO
+let numeros = {};
+let timers = {};
+let tableroMsgId = null;
 
-// =====================
-function save() {
-    fs.writeFileSync("./data.json", JSON.stringify(db, null, 2));
+// INICIALIZAR
+for (let i = 1; i <= TOTAL_NUMEROS; i++) {
+  numeros[i] = {
+    estado: 'disponible',
+    user: null,
+    tiempo: 0
+  };
 }
 
-// =====================
-function user(u) {
-    return u.username ? `@${u.username}` : u.first_name;
-}
+// CREAR TABLERO
+function generarTablero() {
+  let texto = '🎱 *BINGO 15 NÚMEROS*\n\n';
 
-// =====================
-// ⏱ TIEMPO REAL (NO SE GUARDA, SE CALCULA)
-function timeLeft(start) {
+  for (let i = 1; i <= TOTAL_NUMEROS; i++) {
+    let n = numeros[i];
 
-    const diff = 10 * 60 * 1000 - (Date.now() - start);
-
-    if (diff <= 0) return "0:00";
-
-    const m = Math.floor(diff / 60000);
-    const s = Math.floor((diff % 60000) / 1000);
-
-    return `${m}:${s < 10 ? "0" + s : s}`;
-}
-
-// =====================
-// 🎰 TABLERO
-function board() {
-
-    let kb = [];
-
-    for (let i = 1; i <= 15; i++) {
-
-        const n = db.numeros[i];
-
-        if (!n) {
-            kb.push([{ text: `🟢 ${i}`, callback_data: `buy_${i}` }]);
-            continue;
-        }
-
-        if (n.estado === "reservado") {
-            kb.push([{ text: `⛔️ ${n.name} ⏱ ${timeLeft(n.time)}`, callback_data: "none" }]);
-            continue;
-        }
-
-        if (n.estado === "pagado") {
-            kb.push([{ text: `✅ ${n.name}`, callback_data: "none" }]);
-        }
+    if (n.estado === 'disponible') {
+      texto += `🟢 ${i} - Disponible\n`;
     }
 
-    return { inline_keyboard: kb };
+    if (n.estado === 'reservado') {
+      let min = Math.floor(n.tiempo / 60);
+      let sec = n.tiempo % 60;
+      texto += `⛔️ ${n.user} ${min}:${sec.toString().padStart(2, '0')}\n`;
+    }
+
+    if (n.estado === 'pagado') {
+      texto += `✅ ${n.user} PAGADO\n`;
+    }
+  }
+
+  return texto;
 }
 
-// =====================
-// 🚀 /bingo
-bot.onText(/\/bingo/, async (msg) => {
+// ACTUALIZAR TABLERO
+async function actualizarTablero(ctx) {
+  if (!tableroMsgId) return;
 
-    if (msg.from.id !== ADMIN_ID) return;
+  try {
+    await ctx.telegram.editMessageText(
+      ctx.chat.id,
+      tableroMsgId,
+      null,
+      generarTablero(),
+      { parse_mode: 'Markdown' }
+    );
+  } catch (e) {}
+}
 
-    chatId = msg.chat.id;
-    db.numeros = {};
+// CREAR BOTONES
+function botonesNumeros() {
+  let botones = [];
 
-    save();
+  for (let i = 1; i <= TOTAL_NUMEROS; i++) {
+    botones.push(Markup.button.callback(`🎯 ${i}`, `num_${i}`));
+  }
 
-    const sent = await bot.sendMessage(chatId, "🎰 BINGO", {
-        reply_markup: board()
-    });
+  return Markup.inlineKeyboard(botones, { columns: 5 });
+}
 
-    boardId = sent.message_id;
+// INICIAR JUEGO
+bot.command('start', async (ctx) => {
+  let msg = await ctx.reply(generarTablero(), {
+    parse_mode: 'Markdown',
+    ...botonesNumeros()
+  });
+
+  tableroMsgId = msg.message_id;
 });
 
-// =====================
-// 🔥 BOTONES (SOLO UNO - FIX CRÍTICO)
-bot.on("callback_query", (q) => {
+// TOMAR NÚMERO
+bot.action(/num_(\d+)/, async (ctx) => {
+  let num = ctx.match[1];
+  let user = '@' + (ctx.from.username || ctx.from.first_name);
 
-    bot.answerCallbackQuery(q.id).catch(()=>{});
+  if (numeros[num].estado !== 'disponible') {
+    return ctx.answerCbQuery('No disponible');
+  }
 
-    if (!chatId) return;
+  // RESERVAR
+  numeros[num] = {
+    estado: 'reservado',
+    user: user,
+    tiempo: TIEMPO_RESERVA
+  };
 
-    const d = q.data;
+  ctx.reply(`📩 ${user}, envía comprobante de pago a Nequi para el número ${num}`);
 
-    // =====================
-    if (d.startsWith("buy_")) {
+  iniciarTimer(ctx, num);
 
-        const n = d.split("_")[1];
+  actualizarTablero(ctx);
 
-        if (db.numeros[n]) return;
-
-        db.numeros[n] = {
-            name: user(q.from),
-            estado: "reservado",
-            time: Date.now()
-        };
-
-        save();
-
-        refresh();
-
-        return;
-    }
-
-    // =====================
-    if (d.startsWith("ok_") && q.from.id === ADMIN_ID) {
-
-        let nums = d.split("_")[1].split("-");
-
-        nums.forEach(n => {
-            if (db.numeros[n]) db.numeros[n].estado = "pagado";
-        });
-
-        save();
-        refresh();
-    }
-
-    // =====================
-    if (d.startsWith("no_") && q.from.id === ADMIN_ID) {
-
-        let nums = d.split("_")[1].split("-");
-
-        nums.forEach(n => delete db.numeros[n]);
-
-        save();
-        refresh();
-    }
+  ctx.answerCbQuery('Número tomado');
 });
 
-// =====================
-// 🔄 SOLO REFRESCO BOTONES (NO CRONÓMETRO INTERMITENTE)
-function refresh() {
+// TIMER
+function iniciarTimer(ctx, num) {
+  timers[num] = setInterval(async () => {
+    if (numeros[num].estado !== 'reservado') {
+      clearInterval(timers[num]);
+      return;
+    }
 
-    if (!chatId || !boardId) return;
+    numeros[num].tiempo--;
 
-    bot.editMessageReplyMarkup(board(), {
-        chat_id: chatId,
-        message_id: boardId
-    }).catch(()=>{});
+    // EXPIRÓ
+    if (numeros[num].tiempo <= 0) {
+      clearInterval(timers[num]);
+
+      ctx.reply(`⏰ Número ${num} liberado nuevamente`);
+
+      numeros[num] = {
+        estado: 'disponible',
+        user: null,
+        tiempo: 0
+      };
+    }
+
+    actualizarTablero(ctx);
+
+  }, 1000);
 }
 
-// =====================
-// ⏱ LIBERACIÓN 10 MIN (CLAVE)
-setInterval(() => {
+// RECIBIR FOTO
+bot.on('photo', async (ctx) => {
+  let user = '@' + (ctx.from.username || ctx.from.first_name);
 
-    let changed = false;
+  let numero = Object.keys(numeros).find(
+    n => numeros[n].user === user && numeros[n].estado === 'reservado'
+  );
 
-    for (let n in db.numeros) {
+  if (!numero) return;
 
-        const item = db.numeros[n];
+  let msg = await ctx.reply('⏳ Verificando pago...');
 
-        if (item.estado === "reservado") {
+  // animación simple
+  let dots = 0;
+  let anim = setInterval(async () => {
+    dots = (dots + 1) % 4;
+    await ctx.telegram.editMessageText(
+      ctx.chat.id,
+      msg.message_id,
+      null,
+      '⏳ Verificando pago' + '.'.repeat(dots)
+    );
+  }, 500);
 
-            if (Date.now() - item.time >= 10 * 60 * 1000) {
+  setTimeout(async () => {
+    clearInterval(anim);
 
-                delete db.numeros[n];
-                changed = true;
-            }
-        }
-    }
+    await ctx.telegram.editMessageText(
+      ctx.chat.id,
+      msg.message_id,
+      null,
+      `Pago de ${user} para número ${numero}`,
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback('✅ Aprobar', `ok_${numero}`),
+          Markup.button.callback('❌ Rechazar', `bad_${numero}`)
+        ]
+      ])
+    );
 
-    if (changed) {
-        save();
-        refresh();
-    }
+  }, 3000);
+});
 
-}, 5000);
+// APROBAR
+bot.action(/ok_(\d+)/, async (ctx) => {
+  if (ctx.from.id !== ADMIN_ID) return;
+
+  let num = ctx.match[1];
+
+  numeros[num].estado = 'pagado';
+  clearInterval(timers[num]);
+
+  ctx.reply(`✅ Número ${num} PAGADO`);
+
+  actualizarTablero(ctx);
+});
+
+// RECHAZAR
+bot.action(/bad_(\d+)/, async (ctx) => {
+  if (ctx.from.id !== ADMIN_ID) return;
+
+  let num = ctx.match[1];
+
+  numeros[num] = {
+    estado: 'disponible',
+    user: null,
+    tiempo: 0
+  };
+
+  clearInterval(timers[num]);
+
+  ctx.reply(`❌ Pago rechazado, número ${num} disponible`);
+
+  actualizarTablero(ctx);
+});
+
+bot.launch();
