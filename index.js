@@ -85,6 +85,7 @@ bot.action(/pick_(\d+)/, async (ctx) => {
 
   ctx.reply(
 `📩 REALIZAR PAGO
+Y ENVIAR CAPTURA AL GRUPO 
 
 ⏱ 10 minutos o se libera
 
